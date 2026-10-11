@@ -124,18 +124,25 @@ def subset(smpl: bytes, p: dict, wanted: list[tuple[int, int]]):
     return bytes(data), out
 
 
-def write(path: Path, smpl: bytes, p: dict, name: str) -> None:
-    def chunk(cid: str, payload: bytes) -> bytes:
-        return cid.encode() + struct.pack("<I", len(payload)) + payload + (b"\0" if len(payload) & 1 else b"")
+def chunk(cid: str, payload: bytes) -> bytes:
+    return cid.encode() + struct.pack("<I", len(payload)) + payload + (b"\0" if len(payload) & 1 else b"")
 
-    def lst(kind: str, payload: bytes) -> bytes:
-        return chunk("LIST", kind.encode() + payload)
+
+def lst(kind: str, payload: bytes) -> bytes:
+    return chunk("LIST", kind.encode() + payload)
+
+
+def pdta(p: dict) -> bytes:
+    """The preset data, as a LIST chunk."""
+    return lst("pdta", b"".join(chunk(k, b"".join(struct.pack(REC[k], *r) for r in p[k])) for k in REC))
+
+
+def write(path: Path, smpl: bytes, p: dict, name: str) -> None:
+    """The FluidR3 subset, as a SoundFont."""
     info = lst("INFO", chunk("ifil", struct.pack("<HH", 2, 1)) + chunk("isng", b"EMU8000\0") +
                chunk("INAM", name.encode() + b"\0") +
                chunk("ICMT", b"Presets copied out of FluidR3_GM (Frank Wen; MIT licence) for ambient-room.\0"))
-    sdta = lst("sdta", chunk("smpl", smpl))
-    pdta = lst("pdta", b"".join(chunk(k, b"".join(struct.pack(REC[k], *r) for r in p[k])) for k in REC))
-    body = b"sfbk" + info + sdta + pdta
+    body = b"sfbk" + info + lst("sdta", chunk("smpl", smpl)) + pdta(p)
     path.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
 
 
@@ -143,10 +150,12 @@ def normalise(path: Path) -> dict:
     """Rewrite a SoundFont in place so it sounds the same in any player and
     the Pi's Csound reads it right: every instrument zone gets an explicit
     root key, and a zone's tuning (coarse x 100 + fine cents) is made
-    non-negative by raising its root key a semitone per 100 cents. After
-    the background agent's sf2normalize.py, tested on the Pi 2026-10-11."""
+    non-negative by raising its root key a semitone per 100 cents. Only
+    the preset data changes: the font's own info (its name, author,
+    licence) and its samples stay as they were. After the background
+    agent's sf2normalize.py, tested on the Pi 2026-10-11."""
     s16 = lambda v: v - 65536 if v >= 32768 else v
-    smpl, p = read(path)
+    _, p = read(path)
     for oper, amount in p["pgen"]:
         if oper in (COARSE, FINE) and s16(amount) < 0:
             raise SystemExit(f"{path}: negative preset-level tuning, which a root key cannot absorb")
@@ -185,7 +194,11 @@ def normalise(path: Path) -> dict:
     inst[-1][1] = len(out_ibag) - 1
     out_igen.append((0, 0))
     p["ibag"], p["igen"], p["inst"] = out_ibag, out_igen, [tuple(i) for i in inst]
-    write(path, smpl, p, path.stem)
+    data = path.read_bytes()
+    a, b = next((a - 8, b) for cid, a, b in chunks(data, 12, len(data))
+                if cid == "LIST" and data[a:a + 4] == b"pdta")
+    data = data[:a] + pdta(p) + data[b:]
+    path.write_bytes(data[:4] + struct.pack("<I", len(data) - 8) + data[8:])
     return stats
 
 
