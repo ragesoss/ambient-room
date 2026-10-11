@@ -1,0 +1,29 @@
+# The Pi's config, installed once as /etc/ambient-room.toml by
+# setup/install.sh; later edits on the Pi are kept.
+
+# The other program on the Pi that plays through the same speakers: only
+# one plays at a time (ambient/peers.py).
+peers = ["http://127.0.0.1:8000"]
+
+[output]
+engine = "csound"
+# piano-recorder's slot 3: the BMG-04F's USB playback, which enters the
+# mixer on channel 3/4 with the MP3/USB button down. Its facts are in that
+# project's docs/components.md.
+device = "plughw:CARD=spker,DEV=0"
+# aplay's buffer. Large, because the Pi 3's USB is the weak point and the
+# music needs no quick response.
+buffer_ms = 400
+# Output trim, dB. At volume 1 the default sound should land near
+# -21 dBFS gated rms per channel, the level takes are calibrated to
+# (tools/calibrate). Measured 2026-10-11: the moods at volume 1 render at
+# -25 to -28.5 dBFS without a trim, peaks -7.7 dBFS at most.
+gain_db = 6.0
+
+[web]
+host = "0.0.0.0"
+port = 8001
+
+[state]
+# The last settings, kept across restarts.
+file = "~/.local/share/ambient-room/state.json"

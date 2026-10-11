@@ -1,0 +1,18 @@
+# The ambient synth service. setup/install.sh installs it as
+# /etc/systemd/system/ambient-room.service.
+[Unit]
+Description=Ambient room
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@APP@
+Environment=PYTHONPATH=@APP@
+ExecStart=@APP@/.venv/bin/python -m ambient.server
+# Normal priority: the recorder (Nice=-5) stays ahead of it.
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

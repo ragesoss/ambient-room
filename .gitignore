@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+state-dev.json
+renders/
+state-desktop.json
+sounds/*.sf2
+# runtime state of any config (state-shot.json too); tools/deploy skips these
+state-*.json
+# audio renders and test outputs
+*.wav
+# this install's details: addresses, names (local/README.md)
+/local/

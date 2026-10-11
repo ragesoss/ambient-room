@@ -1,0 +1,78 @@
+--- a/Opcodes/sfont.c
++++ b/Opcodes/sfont.c
+@@ -406,7 +406,7 @@
+             sfSample *sample = split->sample;
+             DWORD start=sample->dwStart;
+             MYFLT attenuation;
+-            double pan;
++            int32_t ipan;
+             double freq, orgfreq;
+             double tuneCorrection = split->coarseTune + layer->coarseTune +
+               (split->fineTune + layer->fineTune)*0.01;
+@@ -427,9 +427,14 @@
+                                    split->initialAttenuation);
+             attenuation = POWER(FL(2.0), (-FL(1.0)/FL(60.0)) * attenuation )
+               * GLOBAL_ATTENUATION;
+-            pan = (double)(split->pan + layer->pan) / 1000.0 + 0.5;
+-            if (pan > 1.0) pan = 1.0;
+-            else if (pan < 0.0) pan = 0.0;
++            /* pan in 0.1% units, -500 is hard left.  Clamp it as an
++               integer so neither sqrt() below gets a negative
++               argument: as a double, -500/1000.0 + 0.5 came out as
++               -1e-17 (gcc -ffast-math, fused multiply-add) and
++               sqrt() of it made the right channel NaN */
++            ipan = split->pan + layer->pan;
++            if (ipan > 500) ipan = 500;
++            else if (ipan < -500) ipan = -500;
+             /* Suggested fix from steven yi Oct 2002 */
+             p->base[spltNum] = sBase + start;
+             p->phs[spltNum] = (double) split->startOffset + *p->ioffset;
+@@ -438,8 +443,10 @@
+               sample->dwStartloop + split->startLoopOffset  - start;
+             p->endloop[spltNum] =
+               sample->dwEndloop + split->endLoopOffset - start;
+-            p->leftlevel[spltNum] = (MYFLT) sqrt(1.0-pan) * attenuation;
+-            p->rightlevel[spltNum] = (MYFLT) sqrt(pan) * attenuation;
++            p->leftlevel[spltNum] =
++              (MYFLT) sqrt((500 - ipan) / 1000.0) * attenuation;
++            p->rightlevel[spltNum] =
++              (MYFLT) sqrt((500 + ipan) / 1000.0) * attenuation;
+             p->mode[spltNum]= split->sampleModes;
+             p->attack[spltNum] = split->attack*CS_EKR;
+             p->decay[spltNum] = split->decay*CS_EKR;
+@@ -2352,7 +2359,7 @@
+             sfSample *sample = split->sample;
+             DWORD start=sample->dwStart;
+             MYFLT attenuation;
+-            double pan;
++            int32_t ipan;
+             double freq, orgfreq;
+             double tuneCorrection = split->coarseTune + layer->coarseTune +
+               (split->fineTune + layer->fineTune)*0.01;
+@@ -2375,14 +2382,21 @@
+                                    split->initialAttenuation);
+             attenuation = POWER(FL(2.0), (-FL(1.0)/FL(60.0)) * attenuation )
+               * GLOBAL_ATTENUATION;
+-            pan = (double)(split->pan + layer->pan) / 1000.0 + 0.5;
+-            if (pan > 1.0) pan = 1.0;
+-            else if (pan < 0.0) pan = 0.0;
++            /* pan in 0.1% units, -500 is hard left.  Clamp it as an
++               integer so neither sqrt() below gets a negative
++               argument: as a double, -500/1000.0 + 0.5 came out as
++               -1e-17 (gcc -ffast-math, fused multiply-add) and
++               sqrt() of it made the right channel NaN */
++            ipan = split->pan + layer->pan;
++            if (ipan > 500) ipan = 500;
++            else if (ipan < -500) ipan = -500;
+             p->sBase[spltNum] = sBase;
+             p->sstart[spltNum] = start;
+             p->end[spltNum] = sample->dwEnd + split->endOffset;
+-            p->leftlevel[spltNum] = (MYFLT) sqrt(1.0-pan) * attenuation;
+-            p->rightlevel[spltNum] = (MYFLT) sqrt(pan) * attenuation;
++            p->leftlevel[spltNum] =
++              (MYFLT) sqrt((500 - ipan) / 1000.0) * attenuation;
++            p->rightlevel[spltNum] =
++              (MYFLT) sqrt((500 + ipan) / 1000.0) * attenuation;
+             spltNum++;
+           }
+         }

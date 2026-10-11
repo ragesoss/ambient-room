@@ -1,0 +1,17 @@
+# For testing on the desktop: sound through its own speakers (PipeWire's
+# ALSA device), the page open to the LAN, no peers (the recorder is on the
+# Pi). Run with tools/desktop.
+
+[output]
+# needs Csound here: sudo apt install csound python3-csound
+engine = "csound"
+device = "default"
+buffer_ms = 200
+gain_db = 6.0
+
+[web]
+host = "0.0.0.0"
+port = 8001
+
+[state]
+file = "state-desktop.json"

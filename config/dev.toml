@@ -1,0 +1,15 @@
+# For the desktop: no sound (a fake engine), the page on localhost.
+
+[output]
+engine = "fake"
+
+[web]
+host = "127.0.0.1"
+port = 8001
+
+[state]
+file = "state-dev.json"
+
+[sounds]
+# no SoundFonts: tests and the fake engine use the synthesized voices only
+dir = ""

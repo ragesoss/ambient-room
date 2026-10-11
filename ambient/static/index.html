@@ -1,0 +1,2353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ambient room</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0b0d12; --bg2: #11141b; --card: #151922; --card2: #1b2030; --text: #e8eaf0; --muted: #8e95a6;
+  --line: #262c3a; --chip: #1e2331; --chip-on: #e8eaf0; --chip-on-text: #0b0d12;
+  --home: hsl(38 92% 58%); --play: hsl(38 92% 58%); --warn: #ff8a5c;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+[hidden] { display: none !important; }  /* a panel's own display (the stage's flex) must not show it when its tab is closed */
+body {
+  background: radial-gradient(ellipse at 40% 45%, #171c2b 0%, var(--bg) 70%);
+  color: var(--text); font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, select { font: inherit; color: inherit; touch-action: manipulation; }
+#app {
+  height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto 1fr auto;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+/* top bar */
+#bar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: rgba(11, 13, 18, .7); min-width: 0; overflow: hidden; }
+#bar a.home { color: var(--muted); text-decoration: none; font-size: 14px; white-space: nowrap; }
+#bar .title { font-weight: 650; white-space: nowrap; letter-spacing: .02em; }
+#playBtn {
+  border: 0; border-radius: 999px; background: var(--play); color: #1a1205; font-weight: 700;
+  padding: 0 24px; height: 40px; cursor: pointer; flex: none; box-shadow: 0 0 18px hsl(38 92% 58% / .35);
+}
+#playBtn.on { background: #2a2f3d; color: var(--text); box-shadow: none; }
+.vol { display: flex; align-items: center; gap: 8px; flex: 1 1 180px; min-width: 120px; max-width: 360px; }
+.vol input { flex: 1; accent-color: var(--home); min-width: 60px; }
+.vol .v { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 52px; }
+.lock { border: 0; background: transparent; color: #5d6578; width: 26px; height: 26px; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; flex: none; vertical-align: middle; }
+.lock svg { width: 15px; height: 15px; }
+.lock:hover { background: var(--chip); }
+.lock.on { color: var(--home); }
+.hrow { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+#evoStrip { display: flex; align-items: center; gap: 6px; flex: 1 1 260px; min-width: 120px; overflow: hidden; }
+#evolveBtn { border: 1px solid var(--line); background: var(--chip); border-radius: 999px; height: 34px; padding: 0 14px; cursor: pointer; flex: none; color: var(--muted); }
+#evolveBtn.on { border-color: hsl(150 70% 55%); color: hsl(150 70% 65%); box-shadow: 0 0 12px hsl(150 70% 55% / .3); }
+#evoRing { flex: none; display: none; }
+#evoStrip.on #evoRing { display: block; }
+#evoLog { display: flex; gap: 5px; overflow: hidden; flex: 1; min-width: 0; mask-image: linear-gradient(to right, #000 80%, transparent); }
+.evochip { flex: none; border: 1px solid var(--line); border-left: 3px solid var(--cat); background: var(--chip); border-radius: 8px;
+  padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; color: var(--text); }
+.evochip.new { animation: evonew 1.6s ease-out; }
+.evochip.mine { border-style: dashed; border-left-style: solid; }
+.evochip .who { font-size: 10px; color: var(--muted); margin-right: 4px; text-transform: uppercase; letter-spacing: .06em; }
+.history .who { color: var(--muted); font-size: 11px; margin-right: 6px; }
+@keyframes evonew { 0% { background: hsl(150 60% 30%); transform: translateY(-3px); } 100% { background: var(--chip); transform: none; } }
+/* a setting that evolution just changed glows, and fades back */
+.evo-flash { animation: evoflash 2.8s ease-out; border-radius: 10px; }
+@keyframes evoflash { 0%, 20% { box-shadow: 0 0 0 2px hsl(150 70% 55%), 0 0 18px hsl(150 70% 55% / .6); background-color: hsl(150 60% 30% / .25); }
+  100% { box-shadow: 0 0 0 2px transparent, 0 0 0 transparent; background-color: transparent; } }
+.tabhead button.evo-pending, #tabbar button.evo-pending { position: relative; border-color: hsl(150 70% 55%); color: hsl(150 70% 70%); }
+.tabhead button[data-badge]::after, #tabbar button[data-badge]::after { content: attr(data-badge); position: absolute; top: -6px; right: -4px;
+  background: hsl(150 70% 45%); color: #06110b; font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 1px 5px; }
+@media (max-width: 679px) { #evoLog .evochip:not(:first-child) { display: none; } }
+.compass { position: relative; width: 100%; max-width: 330px; aspect-ratio: 1; margin: 6px auto 4px; touch-action: none; cursor: crosshair; }
+.compass svg { width: 100%; height: 100%; display: block; border-radius: 12px; }
+.compass .ax { font-size: 11px; fill: #c9cedb; }
+.compass .lm { font-size: 10px; fill: #8e95a6; }
+.history { font-size: 12.5px; margin-top: 6px; }
+#moodsPop { position: fixed; z-index: 20; top: 58px; right: 12px; width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 80px);
+  overflow: auto; background: rgba(21, 25, 34, .97); border: 1px solid var(--line); border-radius: 16px; padding: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6); display: none; }
+#moodsPop.show { display: block; }
+#moodsBtn { border: 1px solid var(--line); background: var(--chip); border-radius: 999px; height: 34px; padding: 0 14px; cursor: pointer; flex: none; }
+.big-slider .value { font-size: 20px; font-weight: 650; color: var(--text); }
+details.more summary { cursor: pointer; list-style: none; }
+details.more summary::before { content: "▸ "; color: var(--muted); }
+details.more[open] summary::before { content: "▾ "; }
+.history .row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-top: 1px solid var(--line); }
+.history .row:first-child { border-top: 0; }
+.history .ago { color: var(--muted); white-space: nowrap; }
+.lastchange { font-size: 12px; color: hsl(150 60% 65%); margin-top: 4px; max-width: 260px; }
+#sleep { border: 1px solid var(--line); background: var(--chip); border-radius: 8px; padding: 6px 8px; }
+#status { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; }
+
+/* layout */
+#layout { display: grid; gap: 10px; padding: 10px; min-height: 0; min-width: 0; }
+.col { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; }
+.panel {
+  background: color-mix(in srgb, var(--card) 88%, transparent); border: 1px solid var(--line); border-radius: 16px;
+  padding: 12px 14px; overflow: auto; min-height: 0; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+.tabcol { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex: 1 1 0; }
+.tabhead { display: flex; gap: 6px; margin-bottom: 8px; }
+.tabhead button, #tabbar button {
+  flex: 1; border: 1px solid var(--line); background: var(--chip); border-radius: 10px;
+  padding: 8px 6px; font-weight: 600; cursor: pointer; color: var(--muted);
+}
+.tabhead button.sel, #tabbar button.sel { background: var(--chip-on); border-color: var(--chip-on); color: var(--chip-on-text); }
+.tabcol > .panel { flex: 1 1 0; }
+#tabbar { display: none; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg2); }
+#tabbar.show { display: flex; }
+@media (max-width: 679px) {
+  /* a phone: the bar in two rows (play, volume, presets; then evolution and sleep) */
+  #bar { gap: 8px; padding: 6px 10px; flex-wrap: wrap; row-gap: 6px; }
+  #bar .title, .vol .label, #status, .vol .v { display: none; }
+  #bar a.home { font-size: 0; }
+  #bar a.home::before { content: "‹"; font-size: 22px; padding: 0 4px; }
+  #playBtn { padding: 0 16px; height: 36px; }
+  .vol { flex: 1 1 80px; min-width: 70px; }
+  #moodsBtn { height: 34px; padding: 0 12px; }
+  #evoStrip { order: 5; flex: 1 1 200px; min-width: 0; }
+  #sleep { order: 6; max-width: 104px; padding: 4px 2px; font-size: 13px; margin-left: auto; }
+  #evoStrip + #sleep, #sleep { flex: none; }
+  #tabbar button { font-size: 12.5px; padding: 9px 2px; }
+  /* the wheel's stacked corners: the progression on one line, the chord's notes on one row */
+  .stagebody.stacked .prog { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .stagebody.stacked .prog .c { flex: none; }
+  .stagebody.stacked .notes { flex-wrap: nowrap; overflow: hidden; }
+  .stagebody.stacked .notes .note { padding: 2px 5px; font-size: 11px; }
+}
+
+/* content */
+h2 { font-size: 16px; margin: 0 0 2px; font-weight: 650; }
+h3 { font-size: 14px; margin: 0; font-weight: 650; }
+.what { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
+.value { font-size: 12.5px; margin: 4px 0 0; font-variant-numeric: tabular-nums; color: #c9cedb; }
+.sect { padding: 10px 0; border-top: 1px solid var(--line); }
+.sect:first-of-type { border-top: 0; padding-top: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--line); background: var(--chip); border-radius: 999px; color: var(--text);
+  padding: 6px 12px; cursor: pointer; min-height: 34px; text-align: left;
+}
+.chip small { display: block; font-size: 11px; opacity: .7; }
+.chip.sel { background: var(--chip-on); border-color: var(--chip-on); color: var(--chip-on-text); }
+.chip.sq { border-radius: 10px; }
+.slider input[type=range], .lvl input { width: 100%; accent-color: var(--home); min-height: 28px; margin: 0; }
+.ends { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: -4px; }
+.lvl { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.lvl span { font-size: 13px; }
+.lvl .v { color: var(--muted); min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.lvl input { flex: 1; }
+.layer.off .lvl { opacity: .4; }
+.inset { background: var(--card2); border-radius: 10px; padding: 8px 10px; }
+.grid2 { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13.5px; }
+.grid2 .k { color: var(--muted); }
+.mono { font-variant-numeric: tabular-nums; }
+.help { margin: 6px 0; }
+.help summary { cursor: pointer; color: var(--home); }
+
+/* the stage: keys, the wheel, and what is playing in its corners */
+.stage { display: flex; flex-direction: column; padding: 10px 12px; overflow: hidden; }
+.keyrow { display: grid; grid-template-columns: repeat(12, 1fr) auto; gap: 4px; flex: none; align-items: center; }
+.keyrow .chip { padding: 5px 0; text-align: center; border-radius: 8px; min-height: 32px; min-width: 0; font-weight: 600; }
+.stagebody { position: relative; flex: 1 1 0; min-height: 0; margin-top: 8px; }
+.stagebody .wheel { position: absolute; z-index: 1; }
+#field { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; }
+.corner { position: absolute; max-width: 240px; font-size: 13px; z-index: 2; }
+.corner.tl { left: 0; top: 0; } .corner.tr { right: 0; top: 0; text-align: right; }
+.corner.bl { left: 0; bottom: 0; } .corner.br { right: 0; bottom: 0; text-align: right; }
+.stagebody.stacked { display: flex; flex-direction: column; }
+.stagebody.stacked .corner { position: static; max-width: none; }
+.stagebody.stacked .toprow, .stagebody.stacked .botrow { display: flex; justify-content: space-between; gap: 10px; flex: none; overflow: hidden; }
+.stagebody.stacked .toprow { height: 96px; }
+.stagebody.stacked .botrow { height: 112px; }
+.stagebody.stacked .botrow .sline { display: none; }
+.stagebody.stacked .wheelslot { flex: 1 1 0; position: relative; min-height: 0; }
+.cap { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.chordname { font-size: 30px; font-weight: 700; line-height: 1.1; margin: 2px 0; }
+.chordname .num { margin-right: 10px; }
+/* the progression: its chords in a row, the one sounding lit in its root's colour */
+.prog { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; align-items: center; }
+.prog .c { min-width: 28px; padding: 1px 6px; border-radius: 7px; border: 1px solid var(--line); text-align: center; font-weight: 650; font-size: 13px; }
+.prog .c.now { color: #0b0d12; border-color: transparent; }
+.prog .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-right: 2px; }
+.loopedit { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.loopedit .c { min-width: 54px; padding: 4px 8px; border-radius: 10px; border: 2px solid var(--line); background: var(--chip); text-align: center; cursor: pointer; }
+.loopedit .c b { display: block; font-size: 17px; }
+.loopedit .c small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.loopedit .c.sel { border-color: var(--text); }
+.loopedit .c.now { box-shadow: 0 0 0 2px var(--home); }
+.loopedit .c.add { border-style: dashed; background: transparent; }
+.degpick .chip.sub { opacity: .65; font-style: italic; }
+.degpick .chip.borrowed { border-style: dashed; }
+/* a part's header: its name, a lock for all of it, its presets */
+.parthead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.parthead h2 { margin: 0; }
+.partlock { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: var(--chip);
+  border-radius: 999px; padding: 2px 10px 2px 6px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.partlock svg { width: 14px; height: 14px; }
+.partlock.on { color: var(--home); border-color: var(--home); }
+.partlock.some { color: var(--text); }
+/* the presets window: the toggles for what a preset brings, then the presets */
+.aspects { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+.aspects .chip { border-radius: 999px; padding: 6px 14px; font-weight: 600; }
+.aspects .chip.sel::before { content: "✓ "; }
+.moods .chip.part { border-style: dashed; }
+.subhead { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 6px 0 2px; }
+[data-tab].partlocked::after { content: " 🔒"; font-size: 10px; }
+.savebox { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.savebox input[type=text] { background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 140px; flex: 1; }
+.yours .chip { position: relative; padding-right: 26px; }
+.yours .x { position: absolute; right: 6px; top: 4px; color: var(--muted); }
+.scalename { font-size: 17px; font-weight: 650; }
+.notes { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.note { border-radius: 8px; padding: 3px 7px; font-size: 12px; text-align: center; min-width: 52px; background: var(--card2); border: 1px solid var(--line); }
+.note b { display: block; font-size: 14px; }
+.big { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* the wheel */
+.wheel svg { overflow: visible; user-select: none; -webkit-user-select: none; display: block; }
+.wheel canvas.fx { position: absolute; left: 0; top: 0; pointer-events: none; }
+.wheel .band { fill: none; stroke: #1c2230; }
+.wheel .tick { stroke: #2a3142; }
+.wheel .tick.beat { stroke: #45506a; stroke-width: 2; }
+.wheel .bandlab { font-size: 10px; fill: #5d6578; }
+.sline { font-size: 12.5px; margin-top: 4px; }
+.sline .k { color: var(--muted); }
+#legendBtn { position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 3; font-size: 12px; padding: 3px 10px; min-height: 26px; }
+.stagebody.stacked #legendBtn { position: static; transform: none; align-self: center; margin-top: 4px; }
+#legend { position: absolute; z-index: 4; left: 50%; bottom: 32px; transform: translateX(-50%); width: min(560px, 96%);
+  background: rgba(17, 20, 27, .94); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; font-size: 12.5px;
+  display: none; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+#legend.show { display: block; }
+.legendside { position: absolute; left: 0; top: 50%; transform: translateY(-50%); z-index: 2; font-size: 12px; display: none; }
+.legendside.show { display: block; }
+.legendside .row { display: grid; grid-template-columns: 30px 1fr; gap: 6px; align-items: center; padding: 1px 0; }
+.legendside .row.off { opacity: .35; }
+.legendside h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 7px 0 1px; }
+.legendside svg { display: block; }
+#legend .row { display: grid; grid-template-columns: 34px 1fr; gap: 8px; align-items: center; padding: 3px 0; }
+#legend svg { display: block; }
+#legend h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 6px 0 2px; }
+.wheel .ring { fill: none; stroke: #2a3142; stroke-dasharray: 3 5; }
+.wheel .ring.et { stroke: #3a4256; stroke-dasharray: 2 3; }
+.wheel .spoke { stroke: #1f2533; }
+.wheel .link { opacity: .55; stroke-linecap: round; }
+.wheel .link.et { stroke-dasharray: 4 3; }
+.wheel .tonic { fill: var(--home); filter: drop-shadow(0 0 10px hsl(38 92% 58% / .6)); }
+.wheel .tname { fill: #1a1205; font-weight: 800; font-size: 16px; }
+.wheel .tdeg { fill: #1a1205; font-size: 11px; font-weight: 600; }
+.wheel .node { cursor: pointer; }
+.wheel .node .hit { fill: transparent; }
+.wheel .node .dot { stroke-width: 1.5; }
+.wheel .node.et .dot { stroke-dasharray: 2 2; }
+.wheel .node.et.on .dot { stroke-dasharray: none; }
+.wheel .node .lab { font-size: 12px; fill: var(--muted); }
+.wheel .node.on .lab { font-weight: 700; }
+.wheel .node .rat { font-size: 10.5px; fill: #6d7486; }
+.wheel .chordlayer { pointer-events: none; }
+.wheel .chordshape { fill: #ffffff; fill-opacity: .07; stroke: #ffffff; stroke-opacity: .5; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.wheel .halo { fill: none; stroke: #ffffff; stroke-width: 2.5; animation: sound 2.4s ease-in-out infinite; }
+.wheel .halo.root { stroke-width: 4.5; }
+.wheel .halo2 { fill: none; stroke-width: 1.5; opacity: .8; }
+@keyframes sound { 50% { stroke-opacity: .35; } }
+
+/* moods */
+.moods { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.moods .chip { border-radius: 12px; font-weight: 600; min-height: 48px; }
+#surprise { border: 2px dashed var(--home); background: transparent; }
+
+/* the scale's pitches */
+.pitchlist { font-size: 13px; margin-top: 6px; }
+.pitchlist .row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 3px 0; border-top: 1px solid var(--line); }
+.pitchlist .row:first-child { border-top: 0; }
+.pitchlist .lab { font-weight: 700; }
+.pitchlist .p { margin-right: 12px; white-space: nowrap; }
+.pitchlist .p small { color: var(--muted); }
+
+#toast { position: fixed; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: min(560px, 92vw); background: var(--card); border: 1px solid var(--warn); color: var(--warn); border-radius: 12px; padding: 10px 14px; font-size: 14px; display: none; z-index: 10; white-space: pre-wrap; box-shadow: 0 4px 18px rgba(0,0,0,.5); }
+#toast.show { display: block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <a class="home" id="home" href="/">‹ Home</a>
+    <span class="title">Ambient room</span>
+    <button id="playBtn">Play</button>
+    <div class="vol"><span class="v label">Volume</span><input type="range" id="volume" min="0" max="1" step="0.01"><span class="v" id="volume-value"></span><span id="volumeLock"></span></div>
+    <button id="moodsBtn" title="Moods, songs, styles, and your own presets">Presets</button>
+    <div id="evoStrip">
+      <button id="evolveBtn" title="Evolution: the music changes its own settings">Evolve</button>
+      <svg id="evoRing" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#2a3142" stroke-width="3"/><circle id="evoArc" cx="12" cy="12" r="9" fill="none" stroke="hsl(150 70% 55%)" stroke-width="3" stroke-dasharray="0 57" transform="rotate(-90 12 12)" stroke-linecap="round"/></svg>
+      <div id="evoLog"></div>
+    </div>
+    <select id="sleep" title="Sleep timer">
+      <option value="0">Sleep: off</option><option value="15">Sleep: 15 min</option>
+      <option value="30">Sleep: 30 min</option><option value="60">Sleep: 1 h</option>
+    </select>
+    <span id="status">connecting…</span>
+  </header>
+  <main id="layout"></main>
+  <nav id="tabbar"></nav>
+</div>
+<div id="toast"></div>
+
+<div hidden id="panels">
+  <section class="panel stage" data-id="stage" data-title="Wheel">
+    <div class="keyrow" id="keys" title="The key: the home note, in the middle of the wheel"></div>
+    <div class="stagebody" id="stagebody">
+      <canvas id="field"></canvas>
+      <div class="corner tl" id="cTL"></div>
+      <div class="corner tr" id="cTR"></div>
+      <div class="corner bl" id="cBL"></div>
+      <div class="corner br" id="cBR"><div class="cap">Time</div><div id="timeText"></div></div>
+      <div class="legendside" id="legendSide"></div>
+      <button class="chip" id="legendBtn">Legend</button>
+      <div id="legend"></div>
+      <div class="wheel" id="wheel"></div>
+    </div>
+  </section>
+
+  <section class="panel" data-id="harmony" data-title="Harmony">
+    <div class="parthead"><h2>Harmony</h2><span id="partlock-harmony"></span></div>
+    <p class="what">The scale and the chords: a preset sets the scale, the progression and how the chords are made; not the key.</p>
+    <div class="hrow sect"><h3>Scale <span class="what" id="scaleTuning"></span></h3><span id="tonesLock"></span></div>
+    <p class="what">The notes everything is made of. A preset fills the wheel; then add or remove pitches on it. The key is above the wheel.</p>
+    <div class="chips" id="presets"></div>
+    <div class="sect" id="progSect">
+      <div class="hrow"><h3>Progression</h3><span id="progStyleLock"></span></div>
+      <p class="what">How the chords move: freely, in cycles that come home, or round a set loop. Chords are named
+        by the scale degree they stand on (I is the home chord), so a progression fits any key and scale.</p>
+      <div class="chips" id="progStyles"></div>
+      <p class="value" id="progStyleAbout"></p>
+      <div class="prog" id="progPanelStrip"></div>
+      <div id="progFunctional"></div>
+      <div id="progLoop">
+        <div class="hrow" style="margin-top:8px"><h3 style="font-size:13px">The loop <span class="what" id="loopName"></span></h3><span id="loopLock"></span></div>
+        <div class="loopedit" id="loopEdit"></div>
+        <div class="chips degpick" id="degPick"></div>
+        <p class="what" style="margin:10px 0 4px">Common progressions, in this scale</p>
+        <div class="chips" id="loopPresets"></div>
+        <details class="sect more"><summary><h3 style="display:inline; font-size:13px">Paste a chart</h3></summary>
+          <p class="what">Letter names, bar by bar, in the key above the wheel: <span class="mono">| C / | F G | Am / |</span>.
+            Two chords in a bar share it; <span class="mono">/</span> carries the chord on; a bass note after a slash is left out.</p>
+          <textarea id="chartText" rows="5" style="width:100%; background:var(--chip); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px; font:13px/1.4 ui-monospace, monospace"></textarea>
+          <div class="chips" style="margin-top:6px"><button class="chip" id="chartUse">Use this chart</button></div>
+        </details>
+      </div>
+      <div class="chips" style="margin-top:8px" id="keepRow"><button class="chip" id="keepChords" title="Make the chords in the strip above a loop that repeats">Keep these chords as a loop</button></div>
+      <div id="progAlways"></div>
+      <div class="chips" style="margin-top:8px; align-items:center"><button class="chip" id="plain" title="Every chord a major or minor triad">Major and minor triads only</button><span id="plainLock"></span></div>
+      <p class="what" id="plainAbout" style="margin-top:4px"></p>
+    </div>
+    <div class="sect">
+      <h3>Tuning</h3>
+      <p class="what">Which tunings' pitches the wheel offers. Turn both on to mix them.</p>
+      <div class="chips" id="families"></div>
+      <div class="chips" style="margin-top:8px; align-items:center"><button class="chip" id="adaptive">Retune each chord pure</button><span id="adaptiveLock"></span></div>
+      <p class="what" id="adaptiveAbout" style="margin-top:6px"></p>
+    </div>
+    <div class="sect">
+      <h3>In the scale</h3>
+      <div class="pitchlist" id="pitchList"></div>
+      <div class="inset grid2" id="scaleInfo" style="margin-top:8px"></div>
+      <details class="what help"><summary>How to read the wheel</summary>
+        The home note is in the middle; the twelve tones are around the rim, clockwise from the top.
+        Each bead is a pitch, at its exact place around the circle, in its colour: the colour follows the
+        place, from amber at the home note round the colour wheel. Just ratios lie inside, nearer the middle (and
+        bigger) the simpler the ratio: the fifth, 3/2, is nearest. Equal-tempered pitches lie on the dashed outer ring.
+        Filled: in the scale. Tap a bead to add or remove that pitch; tap a tone's name to add or remove the tone.
+        With more than one pitch for a tone, each chord uses the one purest against its root.
+        While it plays: white halos and a dashed white shape mark the chord (the thickest halo is its root);
+        a diamond marks each melody note, with a dotted line through the last few; a square, each bass line note;
+        a triangle, each arpeggio note; a star, each glint. Around the outside, the drum band is the bar:
+        16 steps clockwise from the top, with lanes for kick, snare and clap, hats and rim, and a white playhead.
+      </details>
+    </div>
+  </section>
+
+  <section class="panel" data-id="melody" data-title="Melody">
+    <div class="parthead"><h2>Melody</h2><span id="partlock-melody"></span></div>
+    <p class="what">The line a listener follows: its shape, how busy it is, where it sits. Its voice is under Sound.</p>
+    <p class="value" id="melodyVoiceNote"></p>
+    <div id="slot-line"></div>
+    <div id="slot-notes"></div>
+    <details class="sect more"><summary><h3 style="display:inline">Range, leaps and register</h3></summary><div id="slot-melody-more"></div></details>
+  </section>
+
+  <section class="panel" data-id="beat" data-title="Beat">
+    <div class="parthead"><h2>Beat</h2><span id="partlock-beat"></span></div>
+    <p class="what">The groove: the tempo and feel, and what each part in time plays. Who plays it is under Sound.</p>
+    <div id="slot-tempo" class="big-slider"></div>
+    <div class="sect"><h3>Feel</h3><div id="slot-feel"></div></div>
+    <div id="pat-drums"></div>
+    <div id="pat-bass"></div>
+    <div id="pat-chords"></div>
+    <div id="pat-pulse"></div>
+  </section>
+
+  <section class="panel" data-id="flow" data-title="Flow">
+    <h2>Flow</h2>
+    <p class="what">How the music changes its own settings over time: evolution. (How the chords move is
+      under Harmony.) Locked settings (<svg width="11" height="11" viewBox="0 0 24 24" style="vertical-align:-1px"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>) only change by hand: not by evolution, a preset or Surprise me. Each part (Harmony, Melody, Beat, Sound) can be locked whole at the top of its tab.</p>
+    <div class="sect">
+      <h3>Evolution</h3>
+      <p class="what" style="margin:2px 0 0">The music changes its own settings, a few at a time, to wander through what is possible.</p>
+      <div id="evolveSliders"></div>
+    </div>
+    <div class="sect">
+      <div class="hrow"><h3>Direction</h3><button class="chip" id="noDirection">No direction</button></div>
+      <p class="what" style="margin:2px 0 0">Tap or drag to point the evolution somewhere: it wanders toward it, changing what is unlocked.
+        The white dot is where the music is now, the line where it has been; the moods are landmarks.</p>
+      <div class="compass" id="compass"></div>
+      <p class="value" id="heading" style="text-align:center"></p>
+      <div id="pullBox"></div>
+    </div>
+    <div class="chips" style="margin:4px 0 10px"><button class="chip" id="nudge">Nudge now</button><button class="chip" id="undo">Undo last change</button></div>
+    <div class="sect">
+      <div class="hrow"><h3>Locked</h3><span class="chips"><button class="chip" id="lockAll">Lock all</button><button class="chip" id="unlockAll">Unlock all</button></span></div>
+      <p class="what" id="lockedList" style="margin-top:6px"></p>
+    </div>
+    <div class="sect">
+      <h3>Recent changes</h3>
+      <div class="history" id="history"></div>
+    </div>
+  </section>
+
+  <section class="panel" data-id="sound" data-title="Sound">
+    <div class="parthead"><h2>Sound</h2><span id="partlock-sound"></span></div>
+    <p class="what">The band and the room: who plays each part and how loud, the atmosphere, the space, the echo, the light.</p>
+    <div id="slot-pad"></div>
+    <div id="slot-bass"></div>
+    <div id="slot-melody"></div>
+    <div id="slot-pulse"></div>
+    <div id="slot-drums"></div>
+    <div id="slot-texture"></div>
+    <div class="sect"><h3>The room</h3><div id="slot-sound"></div></div>
+  </section>
+</div>
+
+<div id="moodsPop">
+  <div class="hrow"><h2>Presets</h2><button class="chip" id="moodsClose">Close</button></div>
+  <h3 class="subhead">What a preset brings</h3>
+  <div class="aspects" id="aspects"></div>
+  <p class="what" id="aspectsAbout" style="margin:4px 0 8px"></p>
+  <div class="moods" id="moods"></div>
+  <div class="moods" style="margin-top:6px"><button class="chip" id="surprise">Surprise me<small></small></button></div>
+  <h3 class="subhead">Yours</h3>
+  <div class="moods yours" id="yours"></div>
+  <div class="savebox"><input type="text" id="saveName" placeholder="Name the sound now" maxlength="40">
+    <button class="chip" id="saveBtn">Save</button></div>
+</div>
+
+<script>
+document.getElementById("home").href = `http://${location.hostname}/`;
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const KEY_PC = { C: 0, "C#": 1, D: 2, Eb: 3, E: 4, F: 5, "F#": 6, G: 7, Ab: 8, A: 9, Bb: 10, B: 11 };
+
+let options = null, status = null;
+const touched = {};
+const busy = (id) => touched[id] && performance.now() - touched[id] < 1500;
+const memo = {};  // render signatures, to skip rebuilding what has not changed
+const changed = (name, sig) => { const s = JSON.stringify(sig); if (memo[name] === s) return false; memo[name] = s; return true; };
+
+/* ---------- colour: a pitch's colour is its place on the wheel ---------- */
+const HOME_HUE = 38;  // amber, at the top
+const hue = (cents) => (HOME_HUE + cents / 1200 * 360) % 360;
+const pcol = (cents, l = 64, s = 82) => `hsl(${hue(cents).toFixed(1)} ${s}% ${l}%)`;
+const centsOf = (slot, pitch) => {
+  const p = options.palette[slot].find((q) => q.pitch === pitch);
+  return p ? p.at : 100 * slot;
+};
+
+/* ---------- layout: columns of panels or tab groups, by screen size ---------- */
+const LAYOUTS = {
+  wide: { cols: "1fr minmax(330px, 390px)", items: [{ stack: ["stage"] }, { tabs: ["harmony", "melody", "beat", "sound", "flow"] }] },
+  tall: { cols: "1fr", items: [{ stack: ["stage", { tabs: ["harmony", "melody", "beat", "sound", "flow"] }], grow: [1.25, 1] }] },
+  narrow: { cols: "1fr", items: [{ tabs: ["stage", "harmony", "melody", "beat", "sound", "flow"], bottom: true }] },
+};
+const panels = {};
+for (const p of document.querySelectorAll("#panels .panel")) panels[p.dataset.id] = p;
+const activeTab = {};
+let mode = null;
+
+function currentMode() {
+  const w = window.innerWidth, h = window.innerHeight;
+  if (w < 680) return "narrow";
+  return w >= 1000 || w > h * 1.15 ? "wide" : "tall";
+}
+
+function tabGroup(ids, key, bottom) {
+  const col = el("div", "tabcol");
+  const head = bottom ? $("tabbar") : el("div", "tabhead");
+  if (bottom) $("tabbar").classList.add("show"); else col.append(head);
+  const wanted = location.hash.slice(1);  // a link like #evolve opens that tab
+  if (!ids.includes(activeTab[key])) activeTab[key] = ids.includes(wanted) ? wanted : ids[0];
+  for (const id of ids) {
+    const b = el("button", "", esc(panels[id].dataset.title));
+    b.onclick = () => { activeTab[key] = id; clearTab(id); showTabs(); };
+    b.dataset.tab = id; b.dataset.group = key;
+    head.append(b);
+    panels[id].style.flex = "";
+    col.append(panels[id]);
+  }
+  return col;
+}
+
+function layout() {
+  const m = currentMode();
+  if (m === mode) return;
+  mode = m;
+  const main = $("layout"), bar = $("tabbar");
+  for (const p of Object.values(panels)) $("panels").append(p);
+  main.innerHTML = ""; bar.innerHTML = ""; bar.classList.remove("show");
+  main.style.gridTemplateColumns = LAYOUTS[m].cols;
+  LAYOUTS[m].items.forEach((c, i) => {
+    if (c.tabs) { main.append(tabGroup(c.tabs, `${m}-${i}`, c.bottom)); return; }
+    const col = el("div", "col");
+    c.stack.forEach((item, j) => {
+      const node = typeof item === "string" ? panels[item] : tabGroup(item.tabs, `${m}-${i}-${j}`, false);
+      node.style.flex = `${(c.grow || [])[j] || 1} 1 0`;
+      if (typeof item === "string") node.hidden = false;
+      col.append(node);
+    });
+    main.append(col);
+  });
+  showTabs();
+}
+
+function showTabs() {
+  for (const b of document.querySelectorAll("[data-group]")) {
+    const on = activeTab[b.dataset.group] === b.dataset.tab;
+    b.classList.toggle("sel", on);
+    panels[b.dataset.tab].hidden = !on;
+  }
+  memo.wheel = memo.stage = null;
+  if (status) renderStage(status);
+}
+window.addEventListener("resize", () => { layout(); memo.wheel = memo.stage = null; if (status) renderStage(status); });
+
+/* ---------- server ---------- */
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {},
+                                body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+async function send(method, path, body) {
+  try { render(await api(method, path, body)); toast(null); }
+  catch (e) { toast(e.message); }
+}
+const patch = (change) => send("PATCH", "/api/state", change);
+let toastTimer = null;
+function toast(msg) {
+  $("toast").textContent = msg || ""; $("toast").classList.toggle("show", !!msg);
+  clearTimeout(toastTimer);
+  if (msg) toastTimer = setTimeout(() => toast(null), 6000);
+}
+
+/* ---------- controls ---------- */
+function chip(id, label, small, onClick, cls = "") {
+  const b = el("button", "chip " + cls, esc(label) + (small ? `<small>${esc(small)}</small>` : ""));
+  b.dataset.value = id; b.onclick = onClick; return b;
+}
+function bindRange(input, id, onInput) {
+  let timer = null;
+  input.addEventListener("input", () => {
+    touched[id] = performance.now();
+    clearTimeout(timer);
+    timer = setTimeout(() => onInput(parseFloat(input.value)), 120);
+  });
+}
+function slider(id, name, what, lo, hi, onInput) {
+  const box = el("div", "slider");
+  box.innerHTML = `<h3>${esc(name)}</h3>` + (what ? `<p class="what" style="margin:0">${esc(what)}</p>` : "") +
+    `<input type="range" id="${id}" min="0" max="1" step="0.01">` +
+    (lo || hi ? `<div class="ends"><span>${esc(lo)}</span><span>${esc(hi)}</span></div>` : "") +
+    `<p class="value" id="${id}-value"></p>`;
+  bindRange(box.querySelector("input"), id, onInput);
+  return box;
+}
+function select(container, value) {
+  for (const b of container.querySelectorAll("[data-value]")) b.classList.toggle("sel", b.dataset.value === value);
+}
+function setRange(id, value, text) {
+  if (!busy(id)) $(id).value = value;
+  const v = $(`${id}-value`); if (v && text != null) v.textContent = text;
+}
+
+const LOCK_ON = `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>`;
+const LOCK_OFF = `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 10h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1V7a5 5 0 0 1 9.6-1.9l-1.8.8A3 3 0 0 0 9 7z"/></svg>`;
+function lockBtn(path) {
+  const b = el("button", "lock", LOCK_OFF);
+  b.dataset.lock = path;
+  b.onclick = (ev) => { ev.stopPropagation(); patch({ locks: { [path]: !status.state.locks.includes(path) } }); };
+  return b;
+}
+function renderLocks(s) {
+  const locks = new Set(s.state.locks);
+  for (const b of document.querySelectorAll("[data-lock]")) {
+    const on = locks.has(b.dataset.lock);
+    if (b.classList.contains("on") !== on || !b.dataset.drawn) {
+      b.classList.toggle("on", on); b.innerHTML = on ? LOCK_ON : LOCK_OFF; b.dataset.drawn = "1";
+    }
+    b.title = `${options.lockable[b.dataset.lock]}: ${on ? "locked: only you change it" : "free to evolve"}`;
+  }
+}
+
+function buildMelodyShape() {
+  const box = el("div", "sect"); box.id = "melodyShape";
+  box.innerHTML = `<div class="hrow"><h3>The line</h3></div>
+    <p class="what" style="margin-bottom:6px">Scattered notes, or a line with a shape: a motif that develops, or phrases that ask and answer.</p>`;
+  box.querySelector(".hrow").append(lockBtn("melody.style"));
+  const styles = el("div", "chips"); styles.id = "melodyStyles";
+  for (const s of options.melody.styles) {
+    const b = chip(s.id, s.id, "", () => patch({ melody: { style: s.id } }));
+    b.title = s.about; styles.append(b);
+  }
+  const about = el("p", "value", ""); about.id = "melodyStyleAbout";
+  box.append(styles, about);
+  const params = el("div"); params.id = "melodyParams";
+  for (const q of options.melody.params) {
+    const sl = slider(`mel-${q.id}`, q.name, q.what, q.lo, q.hi, (x) => patch({ melody: { [q.id]: x } }));
+    const h = sl.querySelector("h3"), row = el("div", "hrow");
+    h.replaceWith(row); row.append(h, lockBtn(`melody.${q.id}`));
+    sl.style.marginTop = "8px";
+    (["phrase", "variation", "syncopation", "pickups"].includes(q.id) ? params : $("slot-melody-more")).append(sl);
+  }
+  box.append(params);
+  $("slot-line").append(box);
+}
+function renderMelodyShape(s) {
+  const m = s.state.melody, ex = s.explain.melody;
+  select($("melodyStyles"), m.style);
+  $("melodyStyleAbout").textContent = ex.style;
+  $("melodyParams").style.opacity = m.style === "Scattered" ? 0.4 : 1;
+  for (const q of options.melody.params) setRange(`mel-${q.id}`, m[q.id], ex[q.id]);
+}
+
+/* ---------- the presets window: what a preset brings ---------- */
+const ASPECT_KEY = "ambient.aspects";
+function aspectsOn() {
+  let on = null;
+  try { on = JSON.parse(localStorage.getItem(ASPECT_KEY)); } catch (e) {}
+  const ids = options.aspects.map((a) => a.id);
+  on = Array.isArray(on) ? on.filter((a) => ids.includes(a)) : ids;
+  return on.length ? on : ids;
+}
+function setAspects(on) {
+  try { localStorage.setItem(ASPECT_KEY, JSON.stringify(on)); } catch (e) {}
+  renderAspects();
+}
+function renderAspects() {
+  const on = aspectsOn(), all = on.length === options.aspects.length;
+  for (const b of $("aspects").querySelectorAll("[data-value]")) b.classList.toggle("sel", on.includes(b.dataset.value));
+  const names = options.aspects.filter((a) => on.includes(a.id)).map((a) => a.name.toLowerCase());
+  $("aspectsAbout").textContent = all
+    ? "All of it: a preset replaces the whole sound (your volume, tuning and anything locked stay)."
+    : `Only its ${names.join(", ")}: the rest of the sound stays as it is.`;
+  $("surprise").querySelector("small").textContent = all ? "everything, at random" : `${names.join(", ")}, at random`;
+  for (const b of $("moods").querySelectorAll("[data-value]")) b.classList.toggle("part", !all);
+  memo.presetMatch = null;
+  if (status) renderPresetMatch(status);
+}
+// a preset lights up when the sound now matches it in everything the toggles bring
+function renderPresetMatch(s) {
+  const on = aspectsOn(), match = s.explain.preset_match || {};
+  if (!changed("presetMatch", [on, match])) return;
+  for (const b of $("moods").querySelectorAll("[data-value]")) {
+    const m = match[b.dataset.value] || [];
+    b.classList.toggle("sel", on.every((a) => m.includes(a)));
+  }
+}
+
+/* ---------- the four parts: a lock for each, the Beat tab's patterns ---------- */
+const PART_OF = {};
+function buildParts() {
+  for (const [part, info] of Object.entries(options.parts)) {
+    for (const p of info.paths) PART_OF[p] = part;
+    const lock = el("button", "partlock", `${LOCK_OFF}<span>all of ${esc(info.name.toLowerCase())}</span>`);
+    lock.id = `plk-${part}`;
+    lock.onclick = () => {
+      const all = info.paths.every((p) => status.state.locks.includes(p));
+      patch({ locks: Object.fromEntries(info.paths.map((p) => [p, !all])) });
+    };
+    $(`partlock-${part}`).append(lock);
+  }
+  // what the parts in time play
+  const TITLES = { drums: "Drum pattern", bass: "Bass line", chords: "Chord rhythm", pulse: "Rhythm part" };
+  for (const [part, list] of Object.entries(options.patterns)) {
+    const box = el("div", "sect");
+    box.innerHTML = `<div class="hrow"><h3>${TITLES[part]}</h3></div>`;
+    box.querySelector(".hrow").append(lockBtn(`beat.${part}`));
+    const pick = (id) => { const b = chip(id, id, "", () => patch({ beat: { [part]: id } }));
+      b.title = (list.find((x) => x.id === id) || {}).about || ""; return b; };
+    if (part === "bass") {
+      for (const [group, names] of Object.entries(options.bass_groups)) {
+        box.append(el("div", "subhead", esc(group)));
+        const row = el("div", "chips"); names.forEach((n) => row.append(pick(n))); box.append(row);
+      }
+    } else {
+      const row = el("div", "chips"); list.forEach((x) => row.append(pick(x.id))); box.append(row);
+    }
+    const about = el("p", "value"); about.id = `patabout-${part}`; box.append(about);
+    $(`pat-${part}`).append(box);
+  }
+}
+function renderParts(s) {
+  const locks = new Set(s.state.locks);
+  for (const [part, info] of Object.entries(options.parts)) {
+    const n = info.paths.filter((p) => locks.has(p)).length, all = n === info.paths.length;
+    const b = $(`plk-${part}`);
+    b.classList.toggle("on", all); b.classList.toggle("some", n > 0 && !all);
+    b.firstElementChild.outerHTML = all ? LOCK_ON : LOCK_OFF;
+    b.title = all ? `All of ${info.name.toLowerCase()} is locked: presets, Surprise me and evolution leave it alone` :
+      n ? `${n} of ${info.paths.length} settings locked; tap to lock all` : "Tap to lock all of it";
+    b.lastElementChild.textContent = all ? `${info.name} locked` : n ? `${n} locked: lock all` : `lock all of ${info.name.toLowerCase()}`;
+    for (const t of document.querySelectorAll(`[data-tab="${part}"]`)) t.classList.toggle("partlocked", all);
+  }
+  for (const [part, v] of Object.entries(s.state.beat)) {
+    select($(`pat-${part}`), v);
+    $(`patabout-${part}`).textContent = s.explain.beat[part];
+  }
+  const mv = s.state.layers.melody.voice;
+  $("melodyVoiceNote").innerHTML = `Played by <b>${esc(mv === "Off" ? "nobody (off)" : mv)}</b> · change it under Sound`;
+  if (changed("yours", s.saved)) {
+    $("yours").innerHTML = "";
+    if (!s.saved.length) $("yours").append(el("p", "what", "None yet: name the sound now and save it. The toggles above choose what to take from it."));
+    for (const y of s.saved) {
+      const b = chip(y.name, y.name, "", () => {
+        send("POST", `/api/saved/${encodeURIComponent(y.name)}`, { aspects: aspectsOn() }); $("moodsPop").classList.remove("show"); });
+      const x = el("span", "x", "×"); x.title = "Delete";
+      x.onclick = (ev) => { ev.stopPropagation(); if (confirm(`Delete “${y.name}”?`)) send("DELETE", `/api/saved/${encodeURIComponent(y.name)}`); };
+      b.append(x); $("yours").append(b);
+    }
+  }
+}
+
+/* ---------- the progression: style, the loop editor, the strip ---------- */
+let loopSel = null;  // the loop chord being changed
+let anyRoot = null;  // the root picked under "Any chord"
+function buildProgression() {
+  const H = options.harmony;
+  $("progStyleLock").append(lockBtn("harmony.style"));
+  for (const st of H.styles) {
+    const b = chip(st.id, st.id, "", () => patch({ harmony: { style: st.id } }));
+    b.title = st.about; $("progStyles").append(b);
+  }
+  for (const q of H.params) {
+    const sl = slider(`harm-${q.id}`, q.name, q.what, q.lo, q.hi, (x) => patch({ harmony: { [q.id]: x } }));
+    const h = sl.querySelector("h3"), row = el("div", "hrow");
+    h.replaceWith(row); row.append(h, lockBtn(`harmony.${q.id}`));
+    sl.style.marginTop = "8px";
+    if (q.step) sl.querySelector("input").step = q.step;
+    (["length", "resolve"].includes(q.id) ? $("progFunctional") : $("progAlways")).append(sl);
+  }
+  $("loopLock").append(lockBtn("harmony.loop"));
+  for (const p of H.presets) $("loopPresets").append(chip(p.id, p.id, p.about, () => {
+    loopSel = null; patch({ harmony: { style: "Loop", loop: p.id } }); }));
+  $("keepChords").onclick = keepChords;
+  $("chartUse").onclick = () => { loopSel = null; patch({ harmony: { chart: $("chartText").value } }); };
+  $("plain").onclick = () => patch({ harmony: { plain: !status.state.harmony.plain } });
+  $("plainLock").append(lockBtn("harmony.plain"));
+}
+// a chord's colour: its root's place on the wheel
+function slotColor(s, slot, l = 68) {
+  const t = s.state.tones[slot];
+  return pcol(t ? centsOf(slot, t[0]) : 100 * slot, l, 85);
+}
+function renderProgression(s) {
+  const h = s.state.harmony, ex = s.explain.harmony;
+  select($("progStyles"), h.style);
+  $("progStyleAbout").textContent = ex.style;
+  $("progFunctional").style.display = h.style === "Functional" ? "" : "none";
+  $("progLoop").style.display = h.style === "Loop" ? "" : "none";
+  $("keepRow").style.display = h.style === "Loop" ? "none" : "";
+  for (const q of options.harmony.params) setRange(`harm-${q.id}`, h[q.id], ex[q.id]);
+  $("plain").classList.toggle("sel", !!h.plain);
+  $("plainAbout").textContent = ex.plain;
+  for (const b of $("loopPresets").querySelectorAll("[data-value]")) b.firstChild.textContent = ex.presets[b.dataset.value];
+  select($("loopPresets"), ex.loop_preset || "");
+  const preset = options.harmony.presets.find((p) => p.id === ex.loop_preset);
+  if (changed("loopEdit", [h.loop, ex.loop, ex.degrees, ex.borrowed, loopSel, s.state.tones])) drawLoopEdit(s);
+  $("loopName").textContent = (preset ? `· ${preset.about}` : "· your own") + ` · ${ex.loop_bars} bars`;
+  renderProgStrips();
+}
+function drawLoopEdit(s) {
+  const h = s.state.harmony, ex = s.explain.harmony, box = $("loopEdit");
+  box.innerHTML = "";
+  if (loopSel != null && loopSel >= h.loop.length) loopSel = null;
+  const LEN = (b) => b == null ? "" : b === 2 ? " · ½ bar" : b === 4 ? "" : b % 4 === 0 ? ` · ${b / 4} bars` : ` · ${b} beats`;
+  h.loop.forEach((d, i) => {
+    const c = el("button", "c" + (i === loopSel ? " sel" : ""),
+      `<b style="color:${slotColor(s, ex.loop[i].slot)}">${esc(ex.loop[i].numeral)}</b><small>${esc(ex.loop[i].chord)}${LEN(ex.loop[i].beats)}</small>`);
+    c.dataset.i = i; c.title = "Tap to change this chord";
+    c.onclick = () => { loopSel = loopSel === i ? null : i; renderProgression(status); };
+    box.append(c);
+  });
+  if (h.loop.length < options.harmony.max_loop) {
+    const add = el("button", "c add", `<b>+</b><small>a chord</small>`);
+    add.onclick = () => { loopSel = h.loop.length; patch({ harmony: { loop: [...h.loop, h.loop[h.loop.length - 1] === 1 ? 5 : 1] } }); };
+    box.append(add);
+  }
+  const pick = $("degPick");
+  pick.innerHTML = "";
+  if (loopSel == null) { pick.append(el("span", "what", "Tap a chord to change it.")); progSig = null; return; }
+  // a chart's chord keeps its length when it changes
+  const setChord = (d) => { const loop = [...h.loop], e = loop[loopSel];
+    loop[loopSel] = e && typeof e === "object" ? { ...e, chord: d } : d; patch({ harmony: { loop } }); };
+  const chordAt = (i) => { const e = h.loop[i]; return e && typeof e === "object" ? e.chord : e; };
+  for (const g of ex.degrees) {
+    const b = chip(String(g.d), g.numeral, g.chord, () => setChord(g.d), g.sub ? "sub" : "");
+    b.title = g.sub ? `This scale has no ${g.d}: ${g.numeral} stands in` : `degree ${g.d}`;
+    b.classList.toggle("sel", chordAt(loopSel) === g.d);
+    pick.append(b);
+  }
+  if (ex.borrowed.length) {
+    pick.append(el("div", "subhead", "Borrowed: from outside the scale"));
+    for (const g of ex.borrowed) {
+      const b = chip(String(g.d), g.numeral, g.chord, () => setChord(g.d), "borrowed");
+      b.title = g.about;
+      b.classList.toggle("sel", chordAt(loopSel) === g.d);
+      pick.append(b);
+    }
+  }
+  // any chord on any root: pick a root, then a kind
+  pick.append(el("div", "subhead", "Any chord: a root, then a kind"));
+  const any = options.harmony.any, names = s.explain.scale.names, keyPc = KEY_PC[s.state.key];
+  for (let r = 0; r < 12; r++) {
+    const b = chip(`r${r}`, names[(keyPc + r) % 12], any.chords[r].maj, () => { anyRoot = anyRoot === r ? null : r; drawLoopEdit(status); });
+    b.classList.toggle("sel", anyRoot === r);
+    pick.append(b);
+  }
+  if (anyRoot != null) {
+    const row = el("div", "chips"); row.style.marginTop = "4px";
+    for (const k of any.kinds) {
+      const roman = any.chords[anyRoot][k.id];
+      const b = chip(roman, `${names[(keyPc + anyRoot) % 12]} ${k.name}`, roman, () => { anyRoot = null; setChord(roman); }, "borrowed");
+      b.classList.toggle("sel", chordAt(loopSel) === roman);
+      row.append(b);
+    }
+    pick.append(row);
+  }
+  // how long this chord lasts: its own length, or the harmonic rhythm's
+  pick.append(el("div", "subhead", "Length"));
+  const cur = h.loop[loopSel], curBeats = cur && typeof cur === "object" ? cur.beats : null;
+  for (const [label, beats] of [["harmonic rhythm", null], ["½ bar", 2], ["1 bar", 4], ["2 bars", 8], ["4 bars", 16]]) {
+    const b = chip(String(beats), label, "", () => {
+      const loop = [...h.loop], c = chordAt(loopSel);
+      loop[loopSel] = beats == null ? c : { chord: c, beats }; patch({ harmony: { loop } }); });
+    b.classList.toggle("sel", (curBeats ?? null) === beats);
+    pick.append(b);
+  }
+  if (h.loop.length > 1) pick.append(chip("remove", "Remove", "this chord", () => {
+    const loop = h.loop.filter((_, j) => j !== loopSel); loopSel = null; patch({ harmony: { loop } }); }));
+  progSig = null;  // the editor was redrawn: mark the sounding chord again
+}
+// The strips (in this section, and under the chord on the stage): the loop,
+// the cycle, or the chords so far, as heard, with the sounding one lit.
+let progSig = null;
+function renderProgStrips() {
+  const s = status, hc = heardChord;
+  if (!s) return;
+  const ok = !!(s.playing && hc && hc.degs && hc.degs.length);
+  const sig = JSON.stringify([ok, ok && [hc.degs, hc.pos, hc.style, hc.prog], s.state.tones, !!$("cornerProg")]);
+  if (sig === progSig) return;
+  progSig = sig;
+  const label = !ok ? "" : hc.style === "Loop" ? "Loop" : hc.style === "Functional" ? "Cycle" : "So far";
+  const html = !ok ? "" : `<span class="lbl">${label}</span>` + hc.degs.map((d, i) => {
+    const col = slotColor(s, (hc.roots || [])[i] ?? 0), now = i === hc.pos;
+    return `<span class="c${now ? " now" : ""}" style="${now ? `background:${col}` : `color:${col}`}">${esc(hc.prog[i])}</span>`;
+  }).join("");
+  $("progPanelStrip").innerHTML = ok && hc.style === "Loop" ? "" : html;
+  if ($("cornerProg")) {
+    const cp = $("cornerProg");
+    cp.innerHTML = html;
+    const now = cp.querySelector(".c.now");
+    if (now && cp.scrollWidth > cp.clientWidth) cp.scrollLeft = now.offsetLeft - cp.offsetLeft - cp.clientWidth / 2 + now.offsetWidth / 2;
+  }
+  for (const c of $("loopEdit").querySelectorAll(".c[data-i]")) c.classList.toggle("now", ok && hc.style === "Loop" && +c.dataset.i === hc.pos);
+  $("keepChords").disabled = !ok;
+}
+// Keep what the strip shows as a loop, lined up so the music goes straight on:
+// a loop's chord for chord slot q is loop[q % length]
+function keepChords() {
+  const hc = heardChord;
+  if (!hc || !hc.degs || !hc.degs.length) return;
+  const L = hc.degs.length, loop = new Array(L);
+  hc.degs.forEach((d, j) => { loop[(((hc.slot - hc.pos + j) % L) + L) % L] = d; });
+  loopSel = null;
+  patch({ harmony: { style: "Loop", loop } });
+}
+
+function build() {
+  bindRange($("volume"), "volume", (x) => patch({ volume: x }));
+  $("playBtn").onclick = () => send("POST", status && status.playing ? "/api/stop" : "/api/play");
+  $("sleep").onchange = () => send("POST", "/api/sleep", { minutes: parseFloat($("sleep").value) });
+
+  for (const a of options.aspects) {
+    const b = chip(a.id, a.name, "", () => {
+      const on = aspectsOn(), i = on.indexOf(a.id);
+      if (i >= 0 && on.length === 1) { toast("At least one: a preset has to bring something."); return; }
+      setAspects(i >= 0 ? on.filter((x) => x !== a.id) : [...on, a.id]);
+    });
+    $("aspects").append(b);
+  }
+  for (const p of options.presets) {
+    const b = chip(p.id, p.id, p.about, () => {
+      send("POST", `/api/preset/${encodeURIComponent(p.id)}`, { aspects: aspectsOn() }); $("moodsPop").classList.remove("show"); });
+    b.title = p.summary; $("moods").append(b);
+  }
+  renderAspects();
+  $("saveBtn").onclick = () => {
+    const name = $("saveName").value.trim();
+    if (!name) { toast("A name first."); return; }
+    send("POST", "/api/saved", { name }); $("saveName").value = "";
+  };
+  $("surprise").onclick = () => { send("POST", "/api/surprise", { aspects: aspectsOn() }); $("moodsPop").classList.remove("show"); };
+
+  for (const k of options.keys) $("keys").append(chip(k.id, k.name, "", () => patch({ key: k.id })));
+  $("keys").append(lockBtn("key"));
+  $("volumeLock").append(lockBtn("volume"));
+  $("tonesLock").append(lockBtn("tones"));
+  $("adaptiveLock").append(lockBtn("adaptive"));
+  for (const s of options.scales) {
+    const b = chip(s.id, s.name, "", () => patch({ scale: s.id, family: shown.just ? "just" : "equal" }), "sq");
+    b.title = s.formula; $("presets").append(b);
+  }
+  for (const f of options.families) {
+    const b = chip(f.id, f.name, "", () => toggleShown(f.id));
+    b.title = f.about; $("families").append(b);
+  }
+  $("adaptiveAbout").textContent = `When on, ${options.adaptive}`;
+  $("adaptive").onclick = () => patch({ adaptive: !status.state.adaptive });
+  renderFamilies();
+
+  buildParts();
+  for (const [layer, info] of Object.entries(options.layers)) {
+    const div = el("div", "sect layer"); div.id = `layer-${layer}`;
+    const title = { pad: "Chords", bass: "Bass", melody: "Melody", pulse: "Rhythm part", drums: "Drum kit", texture: "Atmosphere" }[layer];
+    div.innerHTML = `<div class="hrow"><h3>${esc(title)}</h3></div><p class="what" style="margin-bottom:6px">${esc(info.about)}</p>`;
+    div.querySelector(".hrow").append(lockBtn(`layers.${layer}`));
+    const pick = (v) => chip(v, v, "", () => patch({ layers: { [layer]: { voice: v } } }));
+    if (layer === "melody") {  // many voices: in groups
+      const off = el("div", "chips"); off.append(pick("Off")); div.append(off);
+      for (const [group, names] of Object.entries(options.melody_groups)) {
+        div.append(el("div", "what", `<span style="font-size:11px;text-transform:uppercase;letter-spacing:.08em">${esc(group)}</span>`));
+        const row = el("div", "chips");
+        for (const v of names) row.append(pick(v));
+        div.append(row);
+      }
+    } else {
+      const chips = el("div", "chips");
+      for (const v of info.voices) chips.append(pick(v.id));
+      div.append(chips);
+    }
+    const how = el("p", "value"); how.id = `voice-${layer}`; div.append(how);
+    const lvl = el("div", "lvl", `<span>Level</span><input type="range" id="lvl-${layer}" min="0" max="1" step="0.01"><span class="v" id="lvl-${layer}-value"></span>`);
+    bindRange(lvl.querySelector("input"), `lvl-${layer}`, (x) => patch({ layers: { [layer]: { level: x } } }));
+    div.append(lvl);
+    $(`slot-${layer}`).append(div);
+  }
+  buildMelodyShape();
+  buildProgression();
+  // each Shape slider where it belongs
+  const SLOT = { tempo: "slot-tempo", swing: "slot-feel", pump: "slot-feel", drive: "slot-sound", notes: "slot-notes",
+                 height: "slot-melody-more", bright: "slot-sound", space: "slot-sound",
+                 echo: "slot-sound", motion: "slot-sound" };
+  const ORDER = ["tempo", "swing", "pump", "notes", "height", "space", "echo", "bright", "motion", "drive"];
+  for (const id of ORDER) {
+    const s = options.shape.find((x) => x.id === id);
+    const b = el("div", ["slot-feel", "slot-melody-more", "slot-sound"].includes(SLOT[id]) ? "" : "sect");
+    const sl = slider(`shape-${s.id}`, s.name, s.what, s.lo, s.hi, (x) => patch({ shape: { [s.id]: x } }));
+    const h = sl.querySelector("h3"), row = el("div", "hrow");
+    h.replaceWith(row); row.append(h, lockBtn(`shape.${s.id}`));
+    sl.style.marginTop = "6px";
+    b.append(sl);
+    $(SLOT[id]).append(b);
+  }
+  // the moods panel
+  $("moodsBtn").onclick = (ev) => { ev.stopPropagation(); $("moodsPop").classList.toggle("show"); };
+  $("moodsClose").onclick = () => $("moodsPop").classList.remove("show");
+  document.addEventListener("click", (ev) => {
+    if (!$("moodsPop").contains(ev.target) && ev.target !== $("moodsBtn")) $("moodsPop").classList.remove("show");
+  });
+  $("evolveSliders").append(
+    slider("ev-rate", "Rate", "how often a setting changes by itself", "never", "often", (x) => patch({ evolve: { rate: x } })),
+    slider("ev-size", "Step size", "how far each change goes", "nudges", "leaps", (x) => patch({ evolve: { size: x } })),
+    slider("ev-count", "Changes at once", "how many settings each step changes", "one", "eight", (x) => patch({ evolve: { count: x } })));
+  $("pullBox").append(slider("ev-pull", "Pull", "how strongly it heads that way", "wander", "straight", (x) => patch({ evolve: { pull: x } })));
+  $("noDirection").onclick = () => patch({ evolve: { target: null } });
+  bindCompass();
+  $("nudge").onclick = () => send("POST", "/api/evolve/now");
+  $("undo").onclick = () => send("POST", "/api/evolve/undo");
+  $("lockAll").onclick = () => patch({ locks: Object.fromEntries(Object.keys(options.lockable).map((k) => [k, true])) });
+  $("unlockAll").onclick = () => patch({ locks: Object.fromEntries(Object.keys(options.lockable).map((k) => [k, k === "volume"])) });
+  $("evolveBtn").onclick = () => {
+    const rate = status.state.evolve.rate;
+    if (rate > 0) { try { localStorage.setItem("ambient.rate", rate); } catch (e) {} patch({ evolve: { rate: 0 } }); }
+    else { let r = 0.45; try { r = parseFloat(localStorage.getItem("ambient.rate")) || 0.45; } catch (e) {} patch({ evolve: { rate: r } }); }
+  };
+  new ResizeObserver(() => { memo.wheel = memo.stage = null; if (status) renderStage(status); }).observe($("stagebody"));
+}
+
+/* ---------- which pitches the wheel offers (a view, kept in this browser) ---------- */
+const SHOWN_KEY = "ambient.shown";
+let shown = { equal: true, just: true };
+try { shown = { ...shown, ...JSON.parse(localStorage.getItem(SHOWN_KEY) || "{}") }; } catch (e) {}
+function toggleShown(f) {
+  shown[f] = !shown[f];
+  if (!shown.equal && !shown.just) shown[f] = true;  // always show one
+  try { localStorage.setItem(SHOWN_KEY, JSON.stringify(shown)); } catch (e) {}
+  renderFamilies();
+  memo.wheel = null;
+  if (status) renderStage(status);
+}
+function renderFamilies() {
+  for (const b of $("families").querySelectorAll("[data-value]")) b.classList.toggle("sel", !!shown[b.dataset.value]);
+}
+
+/* ---------- editing the scale ---------- */
+function togglePitch(slot, pitch) {
+  const tones = { ...status.state.tones };
+  const cur = tones[slot] || [];
+  if (cur.includes(pitch)) {
+    const next = cur.filter((p) => p !== pitch);
+    if (next.length) tones[slot] = next; else delete tones[slot];
+  } else {
+    tones[slot] = [...cur, pitch];
+  }
+  setTones(tones);
+}
+function toggleTone(slot) {
+  const tones = { ...status.state.tones };
+  if (tones[slot]) delete tones[slot];
+  else tones[slot] = [shown.just ? options.palette[slot][1].pitch : "ET"];  // [0] is ET, [1] the usual ratio
+  setTones(tones);
+}
+function setTones(tones) {
+  status.state.tones = tones;  // shown at once, then sent
+  memo.wheel = memo.pitches = memo.corners = null;
+  renderStage(status); renderPitchList(status);
+  patch({ tones });
+}
+
+/* ---------- the wheel ---------- */
+const SVG = "http://www.w3.org/2000/svg";
+function sv(tag, attrs, parent) {
+  const e = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.append(e);
+  return e;
+}
+function svText(parent, x, y, s, cls, fill) {
+  const t = sv("text", { x, y, class: cls, "text-anchor": "middle", "dominant-baseline": "middle" }, parent);
+  if (fill) t.setAttribute("style", `fill:${fill}`);
+  t.textContent = s;
+  return t;
+}
+// Tenney heights, log2(n x d): of 3/2 (the simplest) and of the most complex ratio offered
+const H_MIN = 2.58, H_MAX = 12.3;
+const simple = (h) => 1 - Math.min(1, Math.max(0, (h - H_MIN) / (H_MAX - H_MIN)));
+let wheelGeo = null;
+
+function renderWheel(s, size) {
+  const box = $("wheel");
+  const st = s.state, sc = s.explain.scale, keyPc = KEY_PC[st.key];
+  if (!changed("wheel", [size, st.tones, st.key, sc.names, shown])) return;
+  const c = size / 2, R = c - 84;  // the equal-tempered ring; outside it the names, then the drum band
+  const rad = (h) => R * (0.28 + 0.6 * (1 - simple(h)));
+  const dot = (h) => 5 + 11 * simple(h);
+  const at = (a, r) => [c + r * Math.sin(a), c - r * Math.cos(a)];
+  const angle = (cents) => cents / 1200 * 2 * Math.PI;  // exact pitch, as a place around the circle
+  box.innerHTML = "";
+  const svg = sv("svg", { viewBox: `0 0 ${size} ${size}`, width: size, height: size }, box);
+  wheelGeo = { c, R, rad, at, angle, beads: {} };
+  // a faint ring of colour under everything: the colour of each place
+  for (let i = 0; i < 72; i++) {
+    const [x0, y0] = at((i - 0.5) / 72 * 2 * Math.PI, R + 6), [x1, y1] = at((i + 0.5) / 72 * 2 * Math.PI, R + 6);
+    sv("path", { d: `M${x0},${y0} A${R + 6},${R + 6} 0 0 1 ${x1},${y1}`, stroke: pcol(i / 72 * 1200, 55, 70),
+                 "stroke-width": 3, fill: "none", opacity: 0.35 }, svg);
+  }
+  if (shown.just) for (const h of [2.58, 4.32, 6.17, 10.49]) sv("circle", { cx: c, cy: c, r: rad(h), class: "ring" }, svg);
+  if (shown.equal) sv("circle", { cx: c, cy: c, r: R, class: "ring et" }, svg);
+  for (let slot = 0; slot < 12; slot++) {
+    const [x2, y2] = at(slot * Math.PI / 6, R);
+    sv("line", { x1: c, y1: c, x2, y2, class: "spoke" }, svg);
+  }
+  const links = sv("g", {}, svg);
+  for (let slot = 1; slot < 12; slot++) {
+    const chosen = st.tones[slot] || [];
+    const offered = options.palette[slot].filter((p) => shown[p.family] || chosen.includes(p.pitch));
+    const placed = offered.map((p) => p.family === "equal"
+      ? { p, rr: R, d: 7, a: slot * Math.PI / 6 }
+      : { p, rr: rad(p.height), d: dot(p.height), a: angle(p.at) });
+    // keep a tone's just beads apart when two ratios are close (9/8, 10/9)
+    const ji = placed.filter((q) => q.p.family === "just").sort((x, y) => x.rr - y.rr);
+    ji.forEach((q, i) => { if (i && q.rr - ji[i - 1].rr < q.d + ji[i - 1].d + 4) q.rr = ji[i - 1].rr + q.d + ji[i - 1].d + 4; });
+    for (const { p, rr, d, a } of placed) {
+      const on = chosen.includes(p.pitch);
+      const col = pcol(p.at), dim = pcol(p.at, 46, 35);
+      const [x, y] = at(a, rr);
+      wheelGeo.beads[`${slot}|${p.pitch}`] = { x, y, d };
+      if (on) sv("line", { x1: c, y1: c, x2: x, y2: y, class: "link" + (p.family === "equal" ? " et" : ""),
+                           stroke: col, "stroke-width": 1 + d / 2.5 }, links);
+      const b = sv("g", { class: "node" + (on ? " on" : "") + (p.family === "equal" ? " et" : "") }, svg);
+      sv("circle", { cx: x, cy: y, r: Math.max(d + 5, 13), class: "hit" }, b);
+      sv("circle", { cx: x, cy: y, r: d, class: "dot", fill: on ? col : "#11141b", stroke: on ? col : dim }, b);
+      if (p.family === "just") {  // the ratio, beside the bead, clockwise of it
+        svText(b, x + (d + 15) * Math.cos(a), y + (d + 15) * Math.sin(a), p.pitch, "rat", on ? col : null);
+      }
+      const cents = p.cents === 0 ? "" : `, ${p.cents > 0 ? "+" : ""}${p.cents} cents from equal temperament`;
+      sv("title", {}, b).textContent = `${sc.degrees[slot]} ${sc.names[(keyPc + slot) % 12]}: ${p.pitch === "ET" ? "equal-tempered" : p.pitch + ", " + p.name}${cents}`;
+      b.addEventListener("click", () => togglePitch(String(slot), p.pitch));
+    }
+    const [nx, ny] = at(slot * Math.PI / 6, R + 24);
+    const n = sv("g", { class: "node" + (chosen.length ? " on" : "") }, svg);
+    sv("circle", { cx: nx, cy: ny, r: 17, class: "hit" }, n);
+    const ncol = chosen.length ? pcol(100 * slot, 70) : null;
+    svText(n, nx, ny - 6, sc.degrees[slot], "lab", ncol);
+    svText(n, nx, ny + 7, sc.names[(keyPc + slot) % 12], "lab", ncol);
+    n.addEventListener("click", () => toggleTone(String(slot)));
+  }
+  // the drum band: the bar, 16 steps clockwise from the top, a lane per drum
+  wheelGeo.lanes = LANES.map(([part, r0, r1, col]) => ({ part, r0: R + r0, r1: R + r1, col }));
+  for (const l of wheelGeo.lanes) sv("circle", { cx: c, cy: c, r: (l.r0 + l.r1) / 2, class: "band", "stroke-width": l.r1 - l.r0 }, svg);
+  for (let k = 0; k < 16; k++) {
+    const a = k / 16 * 2 * Math.PI, [x0, y0] = at(a, R + 42), [x1, y1] = at(a, R + 78);
+    sv("line", { x1: x0, y1: y0, x2: x1, y2: y1, class: "tick" + (k % 4 === 0 ? " beat" : "") }, svg);
+  }
+  const [bx, by] = at(0.3, R + 82);
+  svText(svg, bx, by, "the bar ↻", "bandlab");
+  wheelGeo.layer = sv("g", { class: "chordlayer" }, svg);  // the sounding chord, drawn by renderChord
+  // two drawing layers over the wheel: steady (the band, the chord; redrawn
+  // each frame) and trail (notes and sparks; fading at the pace Space sets)
+  const dpr = window.devicePixelRatio || 1;
+  const layer = () => {
+    const cv = el("canvas", "fx");
+    cv.width = cv.height = size * dpr; cv.style.width = cv.style.height = `${size}px`;
+    box.append(cv);
+    const ctx = cv.getContext("2d");
+    ctx.scale(dpr, dpr);
+    return ctx;
+  };
+  wheelGeo.steady = layer();
+  wheelGeo.trail = layer();
+  wheelGeo.size = size;
+  sv("circle", { cx: c, cy: c, r: 26, class: "tonic" }, svg);
+  svText(svg, c, c - 5, sc.names[keyPc], "tname");
+  svText(svg, c, c + 11, "1", "tdeg");
+  const [tx, ty] = at(0, R + 24);
+  svText(svg, tx, ty, "1 · home", "lab", pcol(0, 70));
+  memo.chord = null;
+}
+
+// The chord that is sounding, over the wheel: a ring in each of its pitches'
+// colours (the thickest on its root) and the shape they make.
+function renderChord(s) {
+  // the chord is drawn on the steady layer, as it is heard (drawChord); the
+  // status only fills in when the page has not heard a chord change yet
+  if (!heardChord && s.playing && s.explain.now) heardChord = { notes: s.explain.now.notes, root: s.explain.now.root, t: 0, ...s.explain.now.prog };
+  return;
+  if (!wheelGeo || !wheelGeo.layer) return;
+  const n = s.playing ? s.explain.now : null;
+  if (!changed("chord", [n && n.notes.map((x) => [x.slot, x.pitch, x.at]), n && n.root, wheelGeo.c])) return;
+  const g = wheelGeo.layer;
+  g.innerHTML = "";
+  if (!n) return;
+  const { c, R, rad, at, angle, beads } = wheelGeo;
+  const pts = [], seen = new Set();
+  for (const x of n.notes) {
+    const key = `${x.slot}|${x.pitch}`;
+    if (seen.has(key)) continue;  // the same pitch in two octaves
+    seen.add(key);
+    let b = x.slot === 0 ? { x: c, y: c, d: 26 } : beads[key];  // the home note is the center
+    if (!b) {  // a pitch the wheel does not offer (retuned pure): a ghost bead where it is
+      const [num, den] = x.pitch.split("/").map(Number);
+      const h = den ? Math.log2(num * den) : null;
+      const [gx, gy] = at(angle(x.at), h ? rad(h) : R * 0.95);
+      b = { x: gx, y: gy, d: 6, ghost: true };
+    }
+    pts.push({ ...b, a: angle(x.at), col: pcol(x.at, 70, 90), root: x.slot === n.root });
+  }
+  pts.sort((p, q) => p.a - q.a);
+  const rootCol = (pts.find((p) => p.root) || pts[0] || {}).col || "#fff";
+  wheelGeo.chordPts = pts; wheelGeo.chordCol = rootCol;
+  // the chord in white, so it reads apart from the coloured notes moving over it
+  if (pts.length > 2) sv("polygon", { points: pts.map((p) => `${p.x},${p.y}`).join(" "), class: "chordshape" }, g);
+  else if (pts.length === 2) sv("line", { x1: pts[0].x, y1: pts[0].y, x2: pts[1].x, y2: pts[1].y, class: "chordshape" }, g);
+  for (const p of pts) {
+    if (p.ghost) sv("circle", { cx: p.x, cy: p.y, r: p.d, fill: p.col, "fill-opacity": 0.6 }, g);
+    sv("circle", { cx: p.x, cy: p.y, r: p.d + 6, class: "halo" + (p.root ? " root" : "") }, g);
+    sv("circle", { cx: p.x, cy: p.y, r: p.d + 10, class: "halo2", stroke: p.col }, g);
+  }
+}
+
+/* ---------- what sounds, drawn as it is heard ---------- */
+// The server sends each drum hit, note and chord with its score time, and the
+// score time being heard now; the page keeps an offset to its own clock.
+let evSeq = 0, clockOffset = null;
+const queue = [];    // events not yet heard
+const fx = [];       // transient effects (on the trail layer)
+const sparks = [];   // drum sparks
+const laneHits = {}; // "lane|step" -> {t, v}: the drum band
+const lastNote = {}; // kind -> the last note heard, for the Sounding corner
+let lastStep = { k: 0, t: 0 };
+let heardChord = null;  // the chord as heard: {notes, root, t, dur}
+let heldBass = null;    // a held bass note: {slot, pitch, at, t, dur, voice}
+let kickAt = -9, heartAt = -9;
+let prevArp = null, prevLead = null;
+const heardNow = () => performance.now() / 1000 + (clockOffset ?? 0);
+
+// The drum band's lanes, inside to outside: part, inner and outer radius
+// beyond the wheel's ring, colour.
+const LANES = [["kick", 44, 54, "hsl(38 92% 58%)"], ["snare", 56, 63, "#eef1ff"],
+               ["hat", 65, 71, "#7fe3f0"], ["rim", 73, 78, "#b9a8ff"]];
+const LANE_OF = { kick: "kick", heart: "kick", snare: "snare", clap: "snare", hat: "hat", ohat: "hat", rim: "rim" };
+const SPARKS = { kick: 16, snare: 22, clap: 26, hat: 7, ohat: 14, rim: 6 };
+
+async function pollEvents() {
+  if (status && status.playing && !document.hidden) {
+    try {
+      const r = await api("GET", `/api/events?since=${evSeq}`);
+      if (r.audible != null) {
+        const est = r.audible - performance.now() / 1000;
+        clockOffset = clockOffset == null || Math.abs(est - clockOffset) > 0.25 ? est : clockOffset + 0.1 * (est - clockOffset);
+      }
+      if (r.seq < evSeq) queue.length = 0;  // the service restarted
+      evSeq = r.seq;
+      for (const e of r.events) queue.push(e);
+      queue.sort((a, b) => a.t - b.t);
+    } catch (e) {}
+  }
+  setTimeout(pollEvents, 250);
+}
+
+/* ---------- what the settings do to the picture ---------- */
+function look() {
+  const st = status.state, sh = st.shape, L = st.layers, B = st.beat;
+  const raw = (k) => (L[k].voice === "Off" ? null : L[k].voice);
+  // the visuals know the first patterns and voices; the newer ones borrow their looks
+  const DRUM_LOOK = { Rock: "Breaks", Funk: "Breaks", "One drop": "Half-time", Disco: "House", Trap: "Half-time", Swing: "Downtempo",
+                      Train: "Downtempo" };
+  const PULSE_LOOK = { Roll: "Arp 16ths", "Alternating roll": "Arp 16ths" };
+  const MEL_LOOK = { Fiddle: "Strings", Mandolin: "Guitar", Banjo: "Pluck", "Acoustic guitar": "Guitar", Dobro: "Harp",
+                     Harmonica: "Flute" };
+  const PAD_LOOK = { Strings: "Choir", Keys: "Glass", Piano: "Warm", Guitar: "Stabs", Brass: "Organ", "Synth stab": "Stabs",
+                     "Acoustic guitar": "Stabs", Mandolin: "Stabs", Banjo: "Stabs" };
+  const voice = (k) => {
+    if (k === "drums") return B.drums === "Off" ? null : DRUM_LOOK[B.drums] || B.drums;
+    if (k === "pulse") return B.pulse === "Off" ? null : PULSE_LOOK[B.pulse] || B.pulse;
+    if (k === "pad") return raw("pad") && (B.chords !== "Held" ? "Stabs" : PAD_LOOK[raw("pad")] || raw("pad"));
+    if (k === "bass") return raw("bass") && (raw("bass") === "Acid" ? "Acid" : B.bass === "Held" ? raw("bass") :
+      ["Rolling", "Eighths", "Octaves", "Arpeggio", "Walking"].includes(B.bass) ? "Rolling" : "Offbeat");
+    if (k === "melody") return raw(k) && (MEL_LOOK[raw(k)] || raw(k));
+    return raw(k);
+  };
+  const bpmNow = 50 + 100 * sh.tempo;
+  return {
+    bright: sh.bright, space: sh.space, echo: sh.echo, motion: sh.motion, drive: sh.drive, pump: sh.pump,
+    notes: sh.notes, beat: 60 / bpmNow, echoS: 0.75 * 60 / bpmNow,
+    pad: voice("pad"), bass: voice("bass"), melody: voice("melody"), texture: voice("texture"),
+    pulse: voice("pulse"), drums: voice("drums"),
+    level: Object.fromEntries(Object.entries(L).map(([k, v]) => [k, voice(k) == null ? 0 : v.level])),
+  };
+}
+// a pitch's colour, more vivid and glowing with Brightness
+const vcol = (cents, a = 1) => {
+  const b = status ? status.state.shape.bright : 0.5;
+  return `hsl(${hue(cents).toFixed(1)} ${55 + 40 * b}% ${48 + 22 * b}% / ${a})`;
+};
+
+function posOf(e) {
+  const g = wheelGeo;
+  if (!g) return null;
+  if (e.slot === 0) return { x: g.c, y: g.c, d: 26, a: 0 };
+  const b = g.beads[`${e.slot}|${e.pitch}`];
+  const a = g.angle(e.at);
+  if (b) return { ...b, a };
+  const [num, den] = String(e.pitch).split("/").map(Number);
+  const [x, y] = g.at(a, den ? g.rad(Math.log2(num * den)) : g.R);
+  return { x, y, d: 6, a };
+}
+
+function voiceOf(layer) { return status ? status.state.layers[layer].voice : ""; }
+function renderLines() {
+  const line = (id, label, layer, e) => {
+    const box = $(id);
+    if (!box) return;
+    if (!e || heardNow() - e.t > 8) { box.innerHTML = ""; return; }
+    const col = pcol(e.at, 70, 90);
+    box.innerHTML = `<span class="k">${label} · ${esc(voiceOf(layer))}:</span> <b style="color:${col}">${esc(e.name || "")}</b> ${esc(e.pitch)}`;
+  };
+  line("sMel", "Melody", "melody", lastNote.melody);
+  line("sBass", "Bass line", "bass", lastNote.bass);
+  line("sArp", "Arpeggio", "pulse", lastNote.arp);
+}
+function noteName(e) {
+  const sc = status && status.explain.scale;
+  return sc ? sc.names[(KEY_PC[status.state.key] + e.slot) % 12] : "";
+}
+
+/* ---------- events become effects ---------- */
+function spawn(e, ghost = 0) {
+  const t0 = e.t, L = look();
+  if (e.kind === "step") { lastStep = { k: e.k, t: e.t }; return; }
+  if (e.kind === "chord") { heardChord = { ...e }; renderProgStrips(); if (status) renderCorners(status); return; }
+  if (e.kind === "bassheld") { heldBass = { ...e }; return; }
+  if (e.kind === "drum") { drumHit(e, L); return; }
+  if (e.kind === "stab") { fx.push({ type: "stab", t0, dur: 0.35, v: e.v }); return; }
+  const p = posOf(e);
+  if (!p) return;
+  const a = ghost ? Math.pow(L.echo, ghost) * 0.9 : 1;  // echoes fade
+  const base = { t0, ...p, cents: e.at, alpha: a, ghost };
+  if (e.kind === "melody") {
+    const voice = L.melody || "Bell";
+    fx.push({ type: "mel", voice, dur: Math.min(4, Math.max(0.6, e.dur)) * (ghost ? 0.6 : 1), name: noteName(e), ...base,
+              from: voice === "Lead" && prevLead && !ghost ? prevLead : null });
+    if (!ghost) {
+      if (voice === "Lead") prevLead = { x: p.x, y: p.y };
+      lastNote.melody = { ...e, name: noteName(e) };
+    }
+  } else if (e.kind === "arp") {
+    fx.push({ type: "arp", dur: 0.45, from: !ghost ? prevArp : null, ...base });
+    if (!ghost) { prevArp = { x: p.x, y: p.y }; lastNote.arp = { ...e, name: noteName(e) }; }
+  } else if (e.kind === "bass") {
+    fx.push({ type: "bass", voice: L.bass, dur: Math.max(0.3, e.dur * 1.6), v: e.v, ...base });
+    if (!ghost) lastNote.bass = { ...e, name: noteName(e) };
+  } else if (e.kind === "glint") {
+    const g = wheelGeo, [x, y] = g.at(g.angle(e.at), g.R * (0.86 + 0.1 * Math.random()));
+    fx.push({ type: "glint", dur: 0.8, ...base, x, y, spin: Math.random() * 6 });
+  }
+  // echoes: the same note again at the echo's delay, fainter each time
+  if (!ghost && L.echo > 0.05 && ["melody", "arp", "glint"].includes(e.kind)) {
+    for (let n = 1; n <= 3; n++) queue.push({ ...e, t: e.t + n * L.echoS, ghost: n });
+    queue.sort((x, y) => x.t - y.t);
+  }
+  if (!ghost) renderLines();
+}
+
+function drumHit(e, L) {
+  const lane = LANE_OF[e.part] || "rim";
+  laneHits[`${lane}|${e.k}`] = { t: e.t, v: e.v };
+  if (e.part === "kick") kickAt = e.t;
+  if (e.part === "heart") heartAt = e.t;
+  const g = wheelGeo;
+  if (!g || !g.lanes) return;
+  const l = g.lanes.find((x) => x.part === lane);
+  const a = (e.k + 0.5 * (e.part === "heart" ? 0 : 0)) / 16 * 2 * Math.PI;
+  const style = L.drums || "Pulse";
+  const n = Math.round((SPARKS[e.part] || 6) * e.v * (style === "Pulse" ? 0.3 : style === "Half-time" ? 0.6 : 1));
+  for (let i = 0; i < n; i++) {
+    const out = Math.random() < (lane === "kick" ? 0.5 : 0.75) ? 1 : -1;  // mostly outward; kicks also inward
+    const sp = (lane === "hat" ? 90 : 60) + Math.random() * 120;
+    const da = (Math.random() - 0.5) * (lane === "snare" ? 0.5 : 0.25);
+    sparks.push({ t0: e.t, life: (style === "Downtempo" ? 0.9 : style === "Half-time" ? 1.1 : 0.55) * (0.6 + 0.6 * Math.random()),
+                  a: a + da, r: (l.r0 + l.r1) / 2, vr: out * sp, va: (Math.random() - 0.5) * 0.6, col: l.col, style,
+                  size: (lane === "kick" ? 4.5 : lane === "hat" ? 2.4 : 3.3) * (0.7 + 0.6 * Math.random()) });
+  }
+  if (sparks.length > 900) sparks.splice(0, sparks.length - 900);
+  if (lane === "kick" || lane === "snare") fx.push({ type: "inward", t0: e.t, dur: 0.55, lane, v: e.v });
+}
+
+/* ---------- drawing helpers ---------- */
+function glyph(ctx, shape, x, y, s, rot = 0) {
+  ctx.beginPath();
+  const pt = (r, a) => [x + r * Math.sin(a + rot), y - r * Math.cos(a + rot)];
+  if (shape === "diamond") { for (let i = 0; i < 4; i++) ctx[i ? "lineTo" : "moveTo"](...pt(s, i * Math.PI / 2)); }
+  else if (shape === "square") { for (let i = 0; i < 4; i++) ctx[i ? "lineTo" : "moveTo"](...pt(s * 1.15, Math.PI / 4 + i * Math.PI / 2)); }
+  else if (shape === "triangle") { for (let i = 0; i < 3; i++) ctx[i ? "lineTo" : "moveTo"](...pt(s, i * 2 * Math.PI / 3)); }
+  else if (shape === "star") { for (let i = 0; i < 8; i++) ctx[i ? "lineTo" : "moveTo"](...pt(i % 2 ? s * 0.35 : s, i * Math.PI / 4)); }
+  else if (shape === "round") { ctx.roundRect(x - s, y - s, 2 * s, 2 * s, s * 0.45); }
+  ctx.closePath();
+}
+function polygonPath(ctx, pts, wobble = 0, t = 0) {
+  ctx.beginPath();
+  if (!wobble) { pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); return; }
+  // edges that ripple (Choir): points along each edge, pushed out and in
+  pts.forEach((p, i) => {
+    const q = pts[(i + 1) % pts.length], len = Math.hypot(q.x - p.x, q.y - p.y), nx = -(q.y - p.y) / len, ny = (q.x - p.x) / len;
+    for (let s = 0; s <= 12; s++) {
+      const f = s / 12, w = wobble * Math.sin(f * Math.PI) * Math.sin(f * 9 + t * 3 + i);
+      const x = p.x + (q.x - p.x) * f + nx * w, y = p.y + (q.y - p.y) * f + ny * w;
+      (i === 0 && s === 0) ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+  });
+  ctx.closePath();
+}
+function chordPoints() {
+  const g = wheelGeo;
+  if (!heardChord || !g) return null;
+  const seen = new Set(), pts = [];
+  for (const n of heardChord.notes) {
+    const key = `${n.slot}|${n.pitch}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const p = posOf(n);
+    if (p) pts.push({ ...p, cents: n.at, root: n.slot === heardChord.root });
+  }
+  return pts.sort((p, q) => p.a - q.a);
+}
+
+/* ---------- the steady layer: the band, the chord, the held bass ---------- */
+function drawSteady(now, L) {
+  const g = wheelGeo, ctx = g.steady, c = g.c, R = g.R;
+  ctx.clearRect(0, 0, g.size, g.size);
+  const beat = L.beat, step = beat / 4, bar = step * 16;
+  const kickEnv = Math.exp(-(now - kickAt) / (beat * 0.3));
+  // the band: a lane per drum, each hit lit at its step and fading over the bar
+  for (const l of g.lanes) {
+    for (let k = 0; k < 16; k++) {
+      const h = laneHits[`${l.part}|${k}`];
+      if (!h) continue;
+      const age = now - h.t;
+      if (age < 0 || age > bar * 1.02) continue;
+      const a0 = (k - 0.44) / 16 * 2 * Math.PI - Math.PI / 2, a1 = (k + 0.44) / 16 * 2 * Math.PI - Math.PI / 2;
+      ctx.strokeStyle = l.col;
+      ctx.globalAlpha = (0.3 + 0.7 * Math.max(0, 1 - age / (step * 3))) * (0.45 + 0.55 * h.v);
+      ctx.lineWidth = l.r1 - l.r0;
+      ctx.shadowColor = l.col; ctx.shadowBlur = age < step * 2 ? 12 * L.bright : 0;
+      ctx.beginPath(); ctx.arc(c, c, (l.r0 + l.r1) / 2, a0, a1); ctx.stroke();
+    }
+  }
+  ctx.shadowBlur = 0;
+  if (L.drums && kickEnv > 0.02) {  // a kick lights the whole band
+    ctx.globalAlpha = 0.6 * kickEnv; ctx.strokeStyle = "hsl(38 92% 58%)"; ctx.lineWidth = 36;
+    ctx.beginPath(); ctx.arc(c, c, R + 61, 0, 2 * Math.PI); ctx.stroke();
+  }
+  if (status.playing && now - lastStep.t < 1) {  // the playhead
+    const pos = lastStep.k + Math.min(1, (now - lastStep.t) / step);
+    const a = pos / 16 * 2 * Math.PI, [x0, y0] = g.at(a, R + 40), [x1, y1] = g.at(a, R + 80);
+    ctx.globalAlpha = 0.9; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // a held bass: a broad glow from the middle toward its root (and fifth)
+  if (heldBass && now >= heldBass.t && now < heldBass.t + heldBass.dur + 1) {
+    const fade = Math.min(1, (now - heldBass.t) / 1.5) * Math.min(1, (heldBass.t + heldBass.dur + 1 - now));
+    const wedges = [heldBass.at].concat(heldBass.voice === "Fifths" ? [heldBass.at + 702] : []);
+    for (const cents of wedges) {
+      const a = g.angle(cents) - Math.PI / 2, w = 0.32;
+      const grad = ctx.createRadialGradient(c, c, 20, c, c, R * 0.75);
+      grad.addColorStop(0, vcol(cents, 0.32 * fade * (0.5 + L.level.bass)));
+      grad.addColorStop(1, vcol(cents, 0));
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.moveTo(c, c); ctx.arc(c, c, R * 0.75, a - w, a + w); ctx.closePath(); ctx.fill();
+    }
+  }
+  if (L.pulse === "Heartbeat" && status.playing) {
+    const h = Math.exp(-(now - heartAt) / 0.18);
+    if (h > 0.02) {
+      const grad = ctx.createRadialGradient(c, c, 20, c, c, 90);
+      grad.addColorStop(0, `hsl(350 85% 60% / ${0.45 * h})`); grad.addColorStop(1, "hsl(350 85% 60% / 0)");
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(c, c, 90, 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+  drawChord(ctx, now, L);
+}
+
+function drawChord(ctx, now, L) {
+  const pts = chordPoints();
+  if (!pts || !status.playing) return;
+  const g = wheelGeo, c = g.c, t = now;
+  const rootP = pts.find((p) => p.root) || pts[0];
+  const rc = rootP.cents;
+  const scaled = pts;  // exactly on the beads: the wheel's geometry never moves
+  const pad = L.pad;
+  ctx.save();
+  if (pad === "Warm") {  // a soft glowing fill
+    const grad = ctx.createRadialGradient(c, c, 10, c, c, g.R * 0.9);
+    grad.addColorStop(0, "hsl(30 90% 60% / .28)"); grad.addColorStop(1, vcol(rc, 0.12));
+    ctx.fillStyle = grad; ctx.shadowColor = vcol(rc, 0.6); ctx.shadowBlur = 30 * L.bright;
+    polygonPath(ctx, scaled); ctx.fill();
+  } else if (pad === "Glass") {  // thin outlines, split like light through glass
+    ctx.globalCompositeOperation = "lighter"; ctx.lineWidth = 1.2;
+    [[-2, "#7fe3f0"], [0, "#ffffff"], [2, "#ff9ad5"]].forEach(([o, col]) => {
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.55;
+      polygonPath(ctx, scaled.map((p) => ({ x: p.x + o, y: p.y - o }))); ctx.stroke();
+    });
+    ctx.globalAlpha = 0.05; ctx.fillStyle = "#ffffff"; polygonPath(ctx, scaled); ctx.fill();
+  } else if (pad === "Choir") {  // edges that ripple
+    ctx.fillStyle = "hsl(270 70% 70% / .12)"; ctx.strokeStyle = "hsl(270 80% 80% / .7)"; ctx.lineWidth = 1.5;
+    polygonPath(ctx, scaled, 4 + 8 * L.motion, t); ctx.fill(); ctx.stroke();
+  } else if (pad === "Organ") {  // nested outlines, like drawbars
+    const cx = scaled.reduce((s, p) => s + p.x, 0) / scaled.length, cy = scaled.reduce((s, p) => s + p.y, 0) / scaled.length;
+    [0.7, 0.85, 1, 1.12].forEach((k, i) => {
+      ctx.strokeStyle = vcol(rc, 0.25 + 0.15 * i); ctx.lineWidth = 1.5;
+      polygonPath(ctx, scaled.map((p) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }))); ctx.stroke();
+    });
+  } else if (pad === "Air") {  // faint, dashed, with motes drifting along the edges
+    ctx.setLineDash([3, 6]); ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 1;
+    polygonPath(ctx, scaled); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,.6)";
+    scaled.forEach((p, i) => {
+      const q = scaled[(i + 1) % scaled.length];
+      for (let m = 0; m < 3; m++) {
+        const f = ((t * (0.08 + 0.2 * L.motion) + m / 3 + i * 0.37) % 1);
+        ctx.beginPath(); ctx.arc(p.x + (q.x - p.x) * f, p.y + (q.y - p.y) * f, 1.6, 0, 2 * Math.PI); ctx.fill();
+      }
+    });
+  } else if (pad === "Supersaw") {  // several slightly turned copies, glowing
+    ctx.globalCompositeOperation = "lighter";
+    const spread = 0.015 + 0.05 * L.motion;
+    for (let i = -2; i <= 2; i++) {
+      const rot = i * spread + 0.01 * Math.sin(t * 2 + i);
+      const cs = Math.cos(rot), sn = Math.sin(rot);
+      ctx.strokeStyle = vcol(rc + i * 40, 0.45); ctx.lineWidth = 1.6; ctx.shadowColor = vcol(rc, 0.8); ctx.shadowBlur = 10 * L.bright;
+      polygonPath(ctx, scaled.map((p) => ({ x: c + (p.x - c) * cs - (p.y - c) * sn, y: c + (p.x - c) * sn + (p.y - c) * cs }))); ctx.stroke();
+    }
+    ctx.globalAlpha = 0.08; ctx.fillStyle = vcol(rc); polygonPath(ctx, scaled); ctx.fill();
+  } else if (pad === "Stabs") {  // only an outline; each hit flashes it
+    ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 1; polygonPath(ctx, scaled); ctx.stroke();
+  } else {
+    ctx.setLineDash([6, 4]); ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1.5;
+    polygonPath(ctx, scaled); ctx.stroke();
+  }
+  ctx.restore();
+  // white halos on the chord's pitches; the root's is thickest
+  ctx.save();
+  for (const p of scaled) {
+    ctx.strokeStyle = "#ffffff"; ctx.globalAlpha = 0.65 + 0.25 * Math.sin(t * 2.6); ctx.lineWidth = p.root ? 4 : 2.2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, (p.d || 8) + 6, 0, 2 * Math.PI); ctx.stroke();
+    ctx.strokeStyle = vcol(p.cents, 0.8); ctx.globalAlpha = 1; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, (p.d || 8) + 10, 0, 2 * Math.PI); ctx.stroke();
+  }
+  ctx.restore();
+  wheelGeo.chordPts = scaled;
+}
+
+/* ---------- the trail layer: notes, sparks, echoes; Space sets how long they linger ---------- */
+function drawTrail(now, L, dt) {
+  const g = wheelGeo, ctx = g.trail, c = g.c, R = g.R;
+  // fade what is there: a long fade (smears) with much reverb, a quick one without
+  const keep = Math.pow(0.35 + 0.6 * L.space, dt * 60);
+  ctx.save(); ctx.globalCompositeOperation = "destination-out"; ctx.fillStyle = `rgba(0,0,0,${1 - keep})`;
+  ctx.fillRect(0, 0, g.size, g.size); ctx.restore();
+  const glow = 4 + 22 * L.bright;
+  // drum sparks
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const s = sparks[i], age = now - s.t0;
+    if (age < 0) continue;
+    if (age > s.life) { sparks.splice(i, 1); continue; }
+    const q = 1 - age / s.life, r = s.r + s.vr * age, a = s.a + s.va * age;
+    const [x, y] = g.at(a, r);
+    ctx.globalAlpha = q * (0.5 + 0.5 * L.level.drums);
+    ctx.fillStyle = ctx.strokeStyle = s.col;
+    if (s.style === "Techno") {  // sharp streaks
+      const [x0, y0] = g.at(a, r - s.vr * 0.04);
+      ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x, y); ctx.stroke();
+    } else if (s.style === "Breaks") {  // jittery squares
+      const j = 2.5 * Math.random();
+      ctx.fillRect(x - s.size + j, y - s.size - j, s.size * 2, s.size * 2);
+    } else if (s.style === "Half-time") {  // big slow rings
+      ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, s.size * 2.5 * (2 - q), 0, 2 * Math.PI); ctx.stroke();
+    } else if (s.style === "Downtempo") {  // soft blurs
+      ctx.shadowColor = s.col; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(x, y, s.size * 1.6, 0, 2 * Math.PI); ctx.fill(); ctx.shadowBlur = 0;
+    } else {  // round dots
+      ctx.beginPath(); ctx.arc(x, y, s.size, 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i], p = (now - f.t0) / f.dur;
+    if (p >= 1) { fx.splice(i, 1); continue; }
+    if (p < 0) continue;
+    const q = 1 - p, al = f.alpha ?? 1, v = f.v ?? 1;
+    ctx.save();
+    const col = f.cents != null ? vcol(f.cents) : "#fff";
+    ctx.shadowColor = col; ctx.shadowBlur = glow;
+    switch (f.type) {
+      case "inward": {  // a kick or snare sends a faint ring in from the band
+        const l = g.lanes.find((x) => x.part === f.lane);
+        ctx.strokeStyle = l.col; ctx.globalAlpha = 0.18 * q * v; ctx.lineWidth = 2; ctx.shadowBlur = 0;
+        ctx.beginPath(); ctx.arc(c, c, Math.max(30, l.r0 - (l.r0 - R * 0.5) * p), 0, 2 * Math.PI); ctx.stroke();
+        break;
+      }
+      case "mel": melodyFx(ctx, f, p, q, al, col, L); break;
+      case "arp": {
+        ctx.globalAlpha = al * q; ctx.fillStyle = col;
+        if (f.from) {  // an arc hopping from the previous arpeggio note
+          ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = al * q * 0.6;
+          const mx = (f.from.x + f.x) / 2 + (c - (f.from.x + f.x) / 2) * 0.25, my = (f.from.y + f.y) / 2 + (c - (f.from.y + f.y) / 2) * 0.25;
+          ctx.beginPath(); ctx.moveTo(f.from.x, f.from.y); ctx.quadraticCurveTo(mx, my, f.x, f.y); ctx.stroke();
+          ctx.globalAlpha = al * q;
+        }
+        glyph(ctx, "triangle", f.x, f.y, (L.pulse === "Arp 16ths" ? 5 : 7) + 3 * q, p * 2); ctx.fill();
+        break;
+      }
+      case "bass": bassFx(ctx, f, p, q, al, col, L); break;
+      case "glint":
+        ctx.globalAlpha = al * q; ctx.fillStyle = "#ffffff"; ctx.shadowColor = col;
+        glyph(ctx, "star", f.x, f.y, 3 + 7 * Math.sin(Math.PI * Math.min(1, p * 1.3)), f.spin + p * 2); ctx.fill();
+        break;
+      case "stab":
+        if (g.chordPts && g.chordPts.length > 2) {
+          ctx.fillStyle = "#ffffff"; ctx.globalAlpha = 0.3 * q * v; ctx.shadowBlur = 0;
+          polygonPath(ctx, g.chordPts); ctx.fill();
+          ctx.strokeStyle = "#ffffff"; ctx.globalAlpha = 0.8 * q * v; ctx.lineWidth = 2.5; ctx.stroke();
+        }
+        break;
+    }
+    ctx.restore();
+  }
+  // drive: grit and colour-split specks over the wheel
+  if (L.drive > 0.15 && status.playing) {
+    const n = Math.round(L.drive * 14);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 2 * Math.PI, r = Math.random() * (R + 30), [x, y] = g.at(a, r);
+      ctx.fillStyle = Math.random() < 0.5 ? "rgba(255,80,80,.5)" : "rgba(80,220,255,.5)";
+      ctx.fillRect(x, y, 1 + 2 * L.drive, 1);
+    }
+  }
+}
+
+function melodyFx(ctx, f, p, q, al, col, L) {
+  const { x, y } = f, d = Math.max(6, f.d);
+  switch (f.voice) {
+    case "Bell":  // rings expanding slowly, like a bell's partials
+      ctx.strokeStyle = col; ctx.lineWidth = 2;
+      for (let r = 0; r < 3; r++) {
+        const pp = Math.max(0, p - r * 0.12);
+        ctx.globalAlpha = al * (1 - pp) * 0.8;
+        ctx.beginPath(); ctx.arc(x, y, d + 4 + 46 * pp, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.globalAlpha = al * q; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, d * 0.7, 0, 2 * Math.PI); ctx.fill();
+      break;
+    case "Pluck": {  // a burst of rays, and a short string vibrating through the note
+      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.globalAlpha = al * q;
+      const len = 8 + 22 * Math.sqrt(p);
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 + 0.3;
+        ctx.beginPath(); ctx.moveTo(x + 4 * Math.cos(a), y + 4 * Math.sin(a)); ctx.lineTo(x + len * Math.cos(a), y + len * Math.sin(a)); ctx.stroke();
+      }
+      ctx.beginPath();
+      for (let s = -20; s <= 20; s += 2) ctx[s === -20 ? "moveTo" : "lineTo"](x + s, y + 5 * q * Math.sin(s * 0.5 + p * 60) * Math.cos(s / 20 * Math.PI / 2));
+      ctx.stroke();
+      break;
+    }
+    case "Kalimba":  // a bright pop and a quick ring
+      ctx.globalAlpha = al * Math.max(0, 1 - p * 3); ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(x, y, d + 6, 0, 2 * Math.PI); ctx.fill();
+      ctx.globalAlpha = al * q; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, d, 0, 2 * Math.PI); ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, d + 22 * Math.min(1, p * 2), 0, 2 * Math.PI); ctx.stroke();
+      break;
+    case "Flute": {  // a soft glow that breathes with the vibrato
+      const r = d + 10 + 4 * Math.sin(p * f.dur * 2 * Math.PI * 5) * Math.min(1, p * 3);
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r + 14);
+      grad.addColorStop(0, col); grad.addColorStop(1, "transparent");
+      ctx.globalAlpha = al * Math.min(1, q * 1.5) * 0.85; ctx.fillStyle = grad; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(x, y, r + 14, 0, 2 * Math.PI); ctx.fill();
+      break;
+    }
+    case "Felt":  // a soft square, slowly fading
+      ctx.globalAlpha = al * q * 0.85; ctx.fillStyle = col; ctx.shadowBlur = 0;
+      glyph(ctx, "round", x, y, d + 3); ctx.fill();
+      break;
+    case "Lead": {  // a diamond with a comet tail from the last note
+      if (f.from) {
+        const grad = ctx.createLinearGradient(f.from.x, f.from.y, x, y);
+        grad.addColorStop(0, "transparent"); grad.addColorStop(1, col);
+        ctx.strokeStyle = grad; ctx.globalAlpha = al * q; ctx.lineWidth = 5 * q + 1;
+        ctx.beginPath(); ctx.moveTo(f.from.x, f.from.y); ctx.lineTo(x, y); ctx.stroke();
+      }
+      ctx.globalAlpha = al * Math.min(1, q * 2); ctx.fillStyle = col;
+      glyph(ctx, "diamond", x, y, 12 + 2 * Math.sin(p * 40)); ctx.fill();
+      break;
+    }
+    case "Synth pluck": {  // shards flying a little way out and shrinking
+      ctx.globalAlpha = al * q; ctx.fillStyle = col;
+      for (let i = 0; i < 3; i++) {
+        const a = f.a + (i - 1) * 0.5, r = 6 + 26 * p;
+        glyph(ctx, "triangle", x + r * Math.sin(a), y - r * Math.cos(a), 7 * q + 2, a + p * 3); ctx.fill();
+      }
+      break;
+    }
+    case "E. piano": {  // a soft glow with a shimmer
+      const r = d + 8 + 3 * Math.sin(p * f.dur * 2 * Math.PI * 4.5);
+      ctx.globalAlpha = al * q * 0.8; ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill();
+      ctx.globalAlpha = al * q; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, r + 5, 0, 2 * Math.PI); ctx.stroke();
+      break;
+    }
+    case "Vibes":  // rings pulsing with the motor's tremolo
+      ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+      ctx.globalAlpha = al * q * (0.55 + 0.45 * Math.sin(p * f.dur * 2 * Math.PI * 5.5));
+      for (let r = 0; r < 2; r++) { ctx.beginPath(); ctx.arc(x, y, d + 6 + 10 * r + 8 * p, 0, 2 * Math.PI); ctx.stroke(); }
+      break;
+    case "Strings": {  // a bowed arc along the circle, swelling
+      const g = wheelGeo, r = Math.hypot(x - g.c, y - g.c), a = Math.atan2(y - g.c, x - g.c);
+      ctx.strokeStyle = col; ctx.globalAlpha = al * Math.min(1, p * 5) * Math.min(1, q * 3); ctx.lineWidth = 4 + 6 * Math.sin(Math.PI * p);
+      ctx.lineCap = "round"; ctx.beginPath(); ctx.arc(g.c, g.c, r, a - 0.16, a + 0.16); ctx.stroke();
+      break;
+    }
+    case "Chip": {  // pixel blocks, no glow
+      ctx.shadowBlur = 0; ctx.fillStyle = col; ctx.globalAlpha = al * (q > 0.15 ? 1 : q * 6);
+      const s = 5, on = Math.floor(p * 8) % 2 === 0;
+      for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]) if (on || dx === 0 || dy === 0) ctx.fillRect(x + dx * s * 1.2 - s / 2, y + dy * s * 1.2 - s / 2, s, s);
+      break;
+    }
+    case "Brass": {  // a fan flaring outward
+      ctx.fillStyle = col; ctx.globalAlpha = al * q * 0.85;
+      const a = f.a, w = 0.25 + 0.4 * Math.min(1, p * 3), r = 10 + 26 * Math.min(1, p * 2);
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.lineTo(x + r * Math.sin(a - w), y - r * Math.cos(a - w)); ctx.lineTo(x + r * Math.sin(a + w), y - r * Math.cos(a + w));
+      ctx.closePath(); ctx.fill();
+      break;
+    }
+    case "Sync lead": {  // a jagged ring
+      ctx.strokeStyle = col; ctx.globalAlpha = al * q; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i++) {
+        const a = i / 24 * 2 * Math.PI, r = d + 8 + 14 * p + (i % 2 ? 6 : -2) * q;
+        ctx[i ? "lineTo" : "moveTo"](x + r * Math.cos(a), y + r * Math.sin(a));
+      }
+      ctx.stroke();
+      break;
+    }
+    case "Saw stack":  // three diamonds stacked out from the note
+      ctx.fillStyle = col;
+      for (let i = 0; i < 3; i++) {
+        const r = i * (8 + 6 * p);
+        ctx.globalAlpha = al * q * (1 - i * 0.25);
+        glyph(ctx, "diamond", x + r * Math.sin(f.a), y - r * Math.cos(f.a), 10 - i * 2); ctx.fill();
+      }
+      break;
+    case "Marimba": {  // a wooden bar that bounces
+      const b = 6 * Math.abs(Math.sin(p * Math.PI * 3)) * q;
+      ctx.fillStyle = col; ctx.globalAlpha = al * q; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.roundRect(x - 14, y - 4 - b, 28, 8, 4); ctx.fill();
+      break;
+    }
+    case "Steel drum":  // a shimmering oval
+      ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.globalAlpha = al * q * (0.7 + 0.3 * Math.sin(p * 40));
+      ctx.beginPath(); ctx.ellipse(x, y, d + 12 + 10 * p, (d + 12 + 10 * p) * 0.6, f.a, 0, 2 * Math.PI); ctx.stroke();
+      break;
+    case "Harp":  // strings vibrating
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = al * q;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        for (let s = -16; s <= 16; s += 2) ctx[s === -16 ? "moveTo" : "lineTo"](x + i * 6 + 3 * q * Math.sin(s * 0.6 + p * 50 + i), y + s);
+        ctx.stroke();
+      }
+      break;
+    case "Voice": {  // an open mouth: an O that opens with the vowel
+      const open = 0.4 + 0.6 * Math.min(1, p * 1.8);
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.globalAlpha = al * Math.min(1, q * 2);
+      ctx.beginPath(); ctx.ellipse(x, y, (d + 8) * (1 + 0.05 * Math.sin(p * 30)), (d + 8) * open, 0, 0, 2 * Math.PI); ctx.stroke();
+      break;
+    }
+    case "Organ lead":  // drawbars
+      ctx.fillStyle = col; ctx.globalAlpha = al * q; ctx.shadowBlur = 0;
+      [0.9, 0.6, 1, 0.5, 0.75].forEach((h, i) => ctx.fillRect(x - 13 + i * 6, y + 10 - 22 * h * (0.8 + 0.2 * Math.sin(p * 40 + i)), 4, 22 * h));
+      break;
+    case "Guitar": {  // a plucked string across the note
+      ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.globalAlpha = al * q;
+      const ta = f.a + Math.PI / 2;
+      ctx.beginPath();
+      for (let s = -22; s <= 22; s += 2) {
+        const w = 6 * q * Math.sin(s * 0.3 + p * 70) * Math.cos(s / 22 * Math.PI / 2);
+        ctx[s === -22 ? "moveTo" : "lineTo"](x + s * Math.sin(ta) + w * Math.sin(f.a), y - s * Math.cos(ta) - w * Math.cos(f.a));
+      }
+      ctx.stroke();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill();
+      break;
+    }
+    default:
+      ctx.globalAlpha = al * q; ctx.fillStyle = col; glyph(ctx, "diamond", x, y, 11); ctx.fill();
+  }
+  if (!f.ghost && f.name && p < 0.6) {  // the note's name, for the melody
+    ctx.globalAlpha = al * Math.min(1, (0.6 - p) * 4); ctx.fillStyle = col; ctx.shadowBlur = 0;
+    ctx.font = "600 12px system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(f.name, x, y - d - 16);
+  }
+}
+
+function bassFx(ctx, f, p, q, al, col, L) {
+  const g = wheelGeo, c = g.c, { x, y } = f;
+  if (f.voice === "Acid") {  // a squelching zigzag from the middle, bigger on accents
+    const amp = (4 + 10 * f.v) * q, n = 14;
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.globalAlpha = al * q;
+    ctx.beginPath(); ctx.moveTo(c, c);
+    const len = Math.hypot(x - c, y - c), nx = -(y - c) / len, ny = (x - c) / len;
+    for (let i = 1; i <= n; i++) {
+      const fr = i / n, z = (i % 2 ? 1 : -1) * amp * Math.sin(fr * Math.PI);
+      ctx.lineTo(c + (x - c) * fr + nx * z, c + (y - c) * fr + ny * z);
+    }
+    ctx.stroke();
+    ctx.fillStyle = col; glyph(ctx, "square", x, y, 6 + 6 * f.v * q); ctx.fill();
+    return;
+  }
+  // Offbeat and Rolling: a square that pops, and a short line toward the middle
+  const s = (f.voice === "Rolling" ? 6 : 9) + 6 * Math.max(0, 1 - p * 5);
+  ctx.globalAlpha = al * Math.min(1, q * 2); ctx.fillStyle = col;
+  glyph(ctx, "square", x, y, s, f.voice === "Rolling" ? p * 2 : 0); ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = 3 * q; ctx.globalAlpha = al * q * 0.4;
+  ctx.beginPath(); ctx.moveTo(c + (x - c) * 0.35, c + (y - c) * 0.35); ctx.lineTo(x, y); ctx.stroke();
+}
+
+/* ---------- the field behind the wheel: the atmosphere, moving with Motion ---------- */
+let fieldParts = [], fieldKind = null;
+function drawField(now, L, dt) {
+  const cv = $("field");
+  if (!cv) return;
+  const ctx = cv.getContext("2d"), W = cv.width / (window.devicePixelRatio || 1), H = cv.height / (window.devicePixelRatio || 1);
+  ctx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const kind = status.playing ? L.texture : null, lvl = L.level.texture, speed = 0.4 + 1.6 * L.motion;
+  // the whole stage glows in the colour of the chord's root, brighter with Brightness
+  const wb = $("wheel");
+  if (status.playing && heardChord && wheelGeo && wb) {
+    const root = heardChord.notes.find((n) => n.slot === heardChord.root) || heardChord.notes[0];
+    if (root) {
+      const ox = wb.offsetLeft + wheelGeo.c, oy = wb.offsetTop + wheelGeo.c;
+      const grad = ctx.createRadialGradient(ox, oy, wheelGeo.R * 0.2, ox, oy, Math.max(W, H) * 0.75);
+      grad.addColorStop(0, vcol(root.at, 0.16 + 0.22 * L.bright));
+      grad.addColorStop(1, vcol(root.at, 0));
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    }
+  }
+  if (kind !== fieldKind) { fieldParts = []; fieldKind = kind; }
+  if (!kind) return;
+  const want = { Wind: 70, Rain: 160, Waves: 0, Vinyl: 40, Stream: 50 }[kind] * (0.4 + lvl);
+  const rnd = () => Math.random();
+  while (fieldParts.length < want) {
+    fieldParts.push({ x: rnd() * W, y: rnd() * H, v: 0.5 + rnd(), s: rnd(), born: now });
+  }
+  fieldParts.length = Math.min(fieldParts.length, Math.ceil(want));
+  const a = Math.min(1, 2.5 * (0.25 + 0.5 * L.bright) * (0.4 + lvl));
+  ctx.lineCap = "round";
+  if (kind === "Wind") {
+    const dir = Math.sin(now * 0.05) * 0.6;
+    ctx.strokeStyle = `rgba(200,220,255,${0.22 * a})`; ctx.lineWidth = 1.2;
+    for (const p of fieldParts) {
+      p.x += Math.cos(dir) * 60 * speed * p.v * dt; p.y += Math.sin(dir) * 30 * speed * p.v * dt + Math.sin(now + p.s * 9) * 0.3;
+      if (p.x > W + 40) p.x = -40; if (p.x < -40) p.x = W + 40; if (p.y > H) p.y = 0; if (p.y < 0) p.y = H;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 30 * p.v * Math.cos(dir), p.y - 30 * p.v * Math.sin(dir)); ctx.stroke();
+    }
+  } else if (kind === "Rain") {
+    ctx.strokeStyle = `rgba(150,200,255,${0.35 * a})`; ctx.lineWidth = 1;
+    for (const p of fieldParts) {
+      p.y += 260 * p.v * (0.6 + 0.6 * speed) * dt; p.x += 20 * dt;
+      if (p.y > H) { p.y = -10; p.x = rnd() * W; }
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 2, p.y - 10 * p.v); ctx.stroke();
+    }
+  } else if (kind === "Waves") {
+    for (let i = 0; i < 5; i++) {
+      ctx.strokeStyle = `hsla(${195 + i * 8},70%,60%,${(0.1 + 0.05 * i) * a})`; ctx.lineWidth = 2 + i;
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 12) {
+        const y = H * (0.55 + 0.09 * i) + 18 * Math.sin(x / (140 + 30 * i) + now * 0.5 * speed + i) * (0.6 + Math.sin(now * 0.13 * speed + i));
+        x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } else if (kind === "Vinyl") {  // grooves around the wheel, slowly turning, and crackle
+    const g = wheelGeo, wb = $("wheel");
+    if (g && wb) {
+      const ox = wb.offsetLeft + g.c, oy = wb.offsetTop + g.c;
+      ctx.strokeStyle = `rgba(255,255,255,${0.05 * a})`; ctx.lineWidth = 1;
+      for (let r = g.R * 0.3; r < g.R * 1.5; r += 7) {
+        const rot = now * 0.3 * speed;
+        ctx.beginPath(); ctx.arc(ox, oy, r, rot, rot + Math.PI * 1.7); ctx.stroke();
+      }
+    }
+    ctx.fillStyle = `rgba(255,255,255,${0.7 * a})`;
+    for (const p of fieldParts) {
+      if (rnd() < 0.08) { p.x = rnd() * W; p.y = rnd() * H; }
+      if (rnd() < 0.5) ctx.fillRect(p.x, p.y, 1.5, 1.5);
+    }
+  } else if (kind === "Stream") {  // bubbles rising
+    ctx.strokeStyle = `rgba(160,230,255,${0.3 * a})`; ctx.lineWidth = 1;
+    for (const p of fieldParts) {
+      p.y -= 40 * p.v * speed * dt; p.x += Math.sin(now * 2 + p.s * 10) * 0.4;
+      if (p.y < -10) { p.y = H + 10; p.x = rnd() * W; }
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2 + 4 * p.s, 0, 2 * Math.PI); ctx.stroke();
+    }
+  }
+}
+
+/* ---------- each frame ---------- */
+let lastFrame = performance.now();
+function frame() {
+  const tnow = performance.now(), dt = Math.min(0.1, (tnow - lastFrame) / 1000);
+  lastFrame = tnow;
+  const now = heardNow();
+  if (status && options) {
+    while (queue.length && queue[0].t <= now) {
+      const e = queue.shift();
+      if (now - e.t < 1.5) spawn(e, e.ghost || 0);  // skip what is long past (a hidden tab)
+    }
+    const L = look();
+    const g = wheelGeo;
+    if (g && g.steady && g.lanes) {
+      drawSteady(now, L);
+      drawTrail(now, L, dt);
+    }
+    // pump: the field behind the wheel dims on each kick and swells back (the wheel itself never moves)
+    const duck = status.playing && L.drums ? 0.75 * L.pump * Math.exp(-(now - kickAt) / (L.beat * 0.3)) : 0;
+    $("field").style.opacity = (1 - duck).toFixed(3);
+    drawField(now, L, dt);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- the legend ---------- */
+const LEGEND_KEY = "ambient.legend";
+function legendGlyph(kind) {
+  const s = `<svg width="30" height="22" viewBox="0 0 30 22">`;
+  const amber = "hsl(38 92% 58%)", green = "hsl(140 80% 60%)";
+  switch (kind) {
+    case "bead": return s + `<circle cx="9" cy="11" r="6" fill="${green}"/><circle cx="23" cy="11" r="5" fill="#11141b" stroke="${pcol(300, 46, 35)}" stroke-width="1.5"/></svg>`;
+    case "chord": return s + `<polygon points="4,18 15,3 26,18" fill="#fff" fill-opacity=".08" stroke="#fff" stroke-opacity=".6" stroke-dasharray="4 3"/><circle cx="15" cy="3" r="3" fill="none" stroke="#fff" stroke-width="2"/></svg>`;
+    case "melody": return s + `<path d="M15 3 L23 11 L15 19 L7 11 Z" fill="${amber}" stroke="#0b0d12"/></svg>`;
+    case "trail": return s + `<path d="M3 17 L13 7 L27 13" stroke="${green}" stroke-width="2" stroke-dasharray="2 4" fill="none"/></svg>`;
+    case "bass": return s + `<rect x="9" y="5" width="12" height="12" fill="${green}" stroke="#0b0d12"/></svg>`;
+    case "arp": return s + `<path d="M15 4 L22 16 L8 16 Z" fill="${amber}"/></svg>`;
+    case "glint": return s + `<path d="M15 3 L17 9 L23 11 L17 13 L15 19 L13 13 L7 11 L13 9 Z" fill="#7fe3f0"/></svg>`;
+    case "band": return s + LANES.map(([, r0], i) => `<rect x="2" y="${2 + i * 5}" width="26" height="4" fill="${LANES[i][3]}" opacity=".85"/>`).join("") + `</svg>`;
+    case "colour": {  // each copy needs its own gradient id
+      let stops = "";
+      for (let i = 0; i <= 6; i++) stops += `<stop offset="${i / 6}" stop-color="${pcol(i * 200)}"/>`;
+      const id = `lg${++legendGlyph.n}`;
+      return s + `<defs><linearGradient id="${id}">${stops}</linearGradient></defs><rect x="1" y="7" width="28" height="8" rx="4" fill="url(#${id})"/></svg>`;
+    }
+  }
+  return s + "</svg>";
+}
+const LOOKS = {
+  Warm: "soft fill", Glass: "split outline", Choir: "rippling edges", Organ: "nested outlines", Air: "dashed, motes",
+  Supersaw: "turned copies", Stabs: "flashes on hits",
+  Sub: "glow to the root", Soft: "glow to the root", Fifths: "glow to root and fifth", Offbeat: "popping squares",
+  Rolling: "small squares", Acid: "zigzag squelch",
+  Bell: "rings", Pluck: "burst and string", Kalimba: "pop", Flute: "breathing glow", Felt: "soft square",
+  Lead: "diamond with a tail", "Synth pluck": "shards", "E. piano": "shimmering glow", Vibes: "pulsing rings",
+  Strings: "bowed arc", Chip: "pixel blocks", Brass: "flaring fan", "Sync lead": "jagged ring", "Saw stack": "stacked diamonds",
+  Marimba: "bouncing bar", "Steel drum": "shimmering oval", Harp: "vibrating strings", Voice: "open mouth", "Organ lead": "drawbars",
+  Guitar: "plucked string", Fiddle: "bowed arc", Mandolin: "plucked string", Banjo: "burst and string",
+  "Acoustic guitar": "plucked string", Dobro: "vibrating strings", Harmonica: "breathing glow",
+  Wind: "streaks behind", Rain: "drops behind", Waves: "bands behind", Vinyl: "grooves, crackle", Stream: "bubbles behind",
+  Heartbeat: "the wheel throbs", Arp: "hopping triangles", "Arp 16ths": "quick triangles", Glints: "twinkles",
+  Pulse: "faint sparks", Downtempo: "soft sparks", Breaks: "jittery sparks", "Half-time": "slow rings",
+  House: "round sparks", Techno: "sharp streaks",
+};
+const SIDE_ROWS = [
+  ["What is playing", null], ["chord", "Chords", "pad"], ["bass", "Bass", "bass"], ["melody", "Melody", "melody"],
+  ["arp", "Rhythm", "pulse"], ["glint", "Atmosphere", "texture"], ["band", "Drums", "drums"],
+];
+function renderLegendSide(s) {
+  const lay = s.state.layers, B = s.state.beat;
+  const sig = [Object.fromEntries(Object.entries(lay).map(([k, v]) => [k, v.voice])), B];
+  if (!changed("legendSide", sig)) return;
+  const PAT = { pad: "chords", bass: "bass", pulse: "pulse", drums: "drums" };
+  const L = look();
+  $("legendSide").innerHTML = SIDE_ROWS.map(([k, text, layer]) => {
+    if (text == null) return `<h3>${esc(k)}</h3>`;
+    const v = lay[layer].voice, pat = PAT[layer] && B[PAT[layer]];
+    const on = v !== "Off" && pat !== "Off";
+    const label = layer === "drums" ? `${pat} · ${v}` : layer === "pulse" ? `${pat} · ${v}` :
+      pat && pat !== "Held" ? `${v} · ${pat}` : v;
+    return `<div class="row${on ? "" : " off"}">${legendGlyph(k)}<div><b>${esc(text)}</b> ${esc(on ? label : "off")}` +
+      (on ? `<br><small style="color:var(--muted)">${esc(LOOKS[L[layer]] || "")}</small>` : "") + `</div></div>`;
+  }).join("");
+}
+legendGlyph.n = 0;
+function buildLegend() {
+  const rows = [
+    ["Harmony, on the wheel", null],
+    ["colour", "Colour: a pitch's place around the wheel, amber at the home note."],
+    ["bead", "A bead: a pitch. Filled: in the scale; hollow: on offer. Nearer the middle: a simpler ratio to the home note."],
+    ["chord", "White halos and dashed shape: the chord sounding now (thickest halo on its root)."],
+    ["Notes as they sound", null],
+    ["melody", "◆ Melody note, with its name."],
+    ["trail", "The melody's path through its last few notes."],
+    ["bass", "■ Bass line note (Offbeat, Rolling, Acid)."],
+    ["arp", "▲ Arpeggio note."],
+    ["glint", "✦ Glints."],
+    ["Rhythm, around the wheel", null],
+    ["band", "The bar: 16 steps clockwise from the top, a lane each for kick, snare and clap, hats, rim (inside to outside). The white line is now."],
+  ];
+  $("legend").innerHTML = rows.map(([k, text]) => text == null ? `<h3>${esc(k)}</h3>`
+    : `<div class="row">${legendGlyph(k)}<div>${esc(text)}</div></div>`).join("");
+  let open = false;
+  try { open = localStorage.getItem(LEGEND_KEY) === "open"; } catch (e) {}
+  const show = (on) => {
+    $("legend").classList.toggle("show", on);
+    $("legendBtn").textContent = on ? "Hide legend" : "Legend";
+    try { localStorage.setItem(LEGEND_KEY, on ? "open" : "closed"); } catch (e) {}
+  };
+  $("legendBtn").onclick = () => show(!$("legend").classList.contains("show"));
+  show(open);
+}
+
+/* ---------- the stage: the wheel and its corners ---------- */
+function colouredNotes(st, sc) {
+  const keyPc = KEY_PC[st.key];
+  return Object.keys(st.tones).map(Number).sort((a, b) => a - b).map((slot) => {
+    const c = centsOf(slot, st.tones[slot][0]);
+    return `<b style="color:${pcol(c, 70)}">${esc(sc.names[(keyPc + slot) % 12])}</b>`;
+  }).join(" ");
+}
+
+// The status reports each chord when it is scheduled, a second or so before
+// it is heard: keep them by score time, and show the one being heard.
+const nowQueue = [];
+function heardNowChord(s) {
+  const n = s.playing ? s.explain.now : null;
+  if (!n) { nowQueue.length = 0; return null; }
+  if (!nowQueue.length || nowQueue[nowQueue.length - 1].t !== n.t) nowQueue.push(n);
+  const h = heardNow() + 0.05;
+  while (nowQueue.length > 1 && nowQueue[1].t <= h) nowQueue.shift();
+  return nowQueue[0];
+}
+function renderCorners(s) {
+  const st = s.state, ex = s.explain, sc = ex.scale, n = heardNowChord(s);
+  if (!changed("corners", [n, sc, st.tones, st.adaptive, ex.shape.tempo, ex.harmony.rhythm, s.playing, s.fading])) return;
+  // top left: the chord
+  if (n) {
+    const rootNote = n.notes.find((x) => x.slot === n.root) || n.notes[0];
+    const rc = pcol(rootNote ? rootNote.at : 0, 70, 90);
+    $("cTL").innerHTML = `<div class="cap">Chord</div>` +
+      `<div class="chordname"><span class="num" style="color:${rc}">${esc(n.numeral)}</span>${esc(n.chord)}</div>` +
+      `<div class="prog" id="cornerProg"></div>` +
+      `<div class="what" style="margin:0">${n.bass ? "bass " + esc(n.bass) + " · " : ""}${n.next_s != null ? "next in ~" + n.next_s + " s" : ""}</div>`;
+  } else {
+    $("cTL").innerHTML = `<div class="cap">Chord</div><div class="chordname" style="color:var(--muted)">${s.fading ? "fading…" : "—"}</div>` +
+      `<div class="what" style="margin:0">${s.fading ? "" : "Press Play; the music fades in."}</div>`;
+  }
+  progSig = null; renderProgStrips();
+  // top right: the scale
+  $("cTR").innerHTML = `<div class="cap"><span id="cornerTonesLock"></span> Scale</div><div class="scalename">${esc(sc.notes.split(" ")[0])} ${esc(sc.name)}</div>` +
+    `<div class="what" style="margin:0 0 3px">${esc(sc.tuning)}${st.adaptive ? ", chords retuned pure" : ""}</div>` +
+    `<div style="font-size:15px; letter-spacing:.04em">${colouredNotes(st, sc)}</div>` +
+    `<div class="what mono" style="margin:2px 0 0">${esc(sc.formula)}</div>`;
+  $("cornerTonesLock").append(lockBtn("tones"));
+  renderLocks(s);
+  // bottom left: the chord's notes; the melody and bass lines below are filled as they play
+  if (n) {
+    $("cBL").innerHTML = `<div class="cap">Sounding · chord</div><div class="notes">` + n.notes.map((x) => {
+      const col = pcol(x.at, 70, 90);
+      const cents = x.cents === 0 ? "0 ¢" : `${x.cents > 0 ? "+" : "−"}${Math.abs(x.cents).toFixed(1)} ¢`;
+      return `<div class="note" style="border-color:#ffffffaa"><b style="color:${col}">${esc(x.name)}</b>${esc(x.pitch)}<br>${cents}</div>`;
+    }).join("") + `</div><div class="sline" id="sMel"></div><div class="sline" id="sBass"></div><div class="sline" id="sArp"></div>`;
+    renderLines();
+  } else {
+    $("cBL").innerHTML = "";
+  }
+  // bottom right: time (the step ring above it is drawn by the animation loop)
+  $("timeText").innerHTML = `<div class="big">${esc(ex.shape.tempo.split(":")[0])}</div>` +
+    `<div class="what" style="margin:0">${esc(ex.harmony.rhythm)}</div>`;
+}
+
+function renderStage(s) {
+  const body = $("stagebody");
+  const W = body.clientWidth, H = body.clientHeight;
+  if (!W || !H) return;
+  // in the corners around the wheel if the stage is a little wider than tall (a circle
+  // leaves its square's corners free); else in rows above and below it
+  const side = W - H >= 120;
+  if (changed("stage", [W, H, side])) {
+    body.classList.toggle("stacked", !side);
+    if (side) {
+      for (const id of ["cTL", "cTR", "cBL", "cBR", "legendSide"]) body.append($(id));
+      body.append($("wheel"));
+      for (const r of body.querySelectorAll(".toprow, .botrow, .wheelslot")) r.remove();
+    } else if (!body.querySelector(".toprow")) {
+      const top = el("div", "toprow"), slot = el("div", "wheelslot"), bot = el("div", "botrow");
+      top.append($("cTL"), $("cTR")); slot.append($("wheel")); bot.append($("cBL"), $("cBR"));
+      body.append(top, slot, bot);
+    }
+    memo.wheel = memo.corners = null;
+  }
+  renderCorners(s);
+  renderLegendSide(s);
+  const field = $("field"), dpr = window.devicePixelRatio || 1;
+  if (field.width !== Math.round(W * dpr) || field.height !== Math.round(H * dpr)) {
+    field.width = Math.round(W * dpr); field.height = Math.round(H * dpr);
+    field.style.width = `${W}px`; field.style.height = `${H}px`;
+  }
+  let size, left, top;
+  if (side) {
+    size = Math.min(H, W - 120); left = (W - size) / 2; top = (H - size) / 2;
+  } else {
+    const slot = body.querySelector(".wheelslot");
+    size = Math.min(slot.clientWidth, slot.clientHeight); left = (slot.clientWidth - size) / 2; top = (slot.clientHeight - size) / 2;
+  }
+  size = Math.max(260, Math.floor(size));
+  const gutter = side ? (W - size) / 2 : 0;
+  const roomy = gutter >= 140;
+  $("legendSide").classList.toggle("show", roomy);
+  $("legendSide").style.maxWidth = `${gutter - 8}px`;
+  $("legendBtn").style.display = roomy ? "none" : "";
+  if (roomy) $("legend").classList.remove("show");
+  const w = $("wheel");
+  w.style.left = `${left}px`; w.style.top = `${top}px`;
+  renderWheel(s, size);
+  renderChord(s);
+}
+
+function renderPitchList(s) {
+  const st = s.state, sc = s.explain.scale, keyPc = KEY_PC[st.key];
+  if (!changed("pitches", [st.tones, st.key, sc.names])) return;
+  const box = $("pitchList");
+  box.innerHTML = "";
+  for (const slot of Object.keys(st.tones).map(Number).sort((a, b) => a - b)) {
+    const row = el("div", "row");
+    const lc = pcol(centsOf(slot, st.tones[slot][0]), 70);
+    row.append(el("div", "lab", `<span style="color:${lc}">${esc(sc.degrees[slot])} · ${esc(sc.names[(keyPc + slot) % 12])}</span>`));
+    const ps = el("div");
+    for (const pitch of st.tones[slot]) {
+      const p = options.palette[slot].find((q) => q.pitch === pitch) || { pitch, cents: 0, name: "" };
+      const c = p.cents === 0 ? "0 ¢" : `${p.cents > 0 ? "+" : "−"}${Math.abs(p.cents).toFixed(1)} ¢`;
+      const label = pitch === "ET" ? "equal-tempered" : pitch;
+      ps.append(el("span", "p", `${esc(label)} <small>${c}${p.name && pitch !== "ET" ? " · " + esc(p.name) : ""}</small>`));
+    }
+    row.append(ps);
+    box.append(row);
+  }
+}
+
+/* ---------- render ---------- */
+function render(s) {
+  status = s;
+  const st = s.state, ex = s.explain;
+  $("playBtn").textContent = s.playing ? "Stop" : "Play";
+  $("playBtn").classList.toggle("on", s.playing);
+  let text = s.playing ? "playing" : s.fading ? "fading out" : "stopped";
+  if (s.sleep_s != null) text += ` · sleep in ${Math.ceil(s.sleep_s / 60)} min`;
+  if (s.dropouts) text += ` · ${s.dropouts} dropouts`;
+  $("status").textContent = text;
+  if (s.error) toast(s.error);
+  if (s.sleep_s == null && $("sleep").value !== "0" && document.activeElement !== $("sleep")) $("sleep").value = "0";
+
+  setRange("volume", st.volume, ex.volume.split(" · ")[0]);
+  select($("keys"), st.key);
+  select($("presets"), ex.scale.preset || "");
+  $("scaleTuning").textContent = `· ${ex.scale.name} · ${ex.scale.tuning}`;
+  $("adaptive").classList.toggle("sel", !!st.adaptive);
+  if (changed("scaleInfo", ex.scale)) {
+    $("scaleInfo").innerHTML =
+      `<span class="k">Notes</span><span class="mono">${esc(ex.scale.notes)}</span>` +
+      `<span class="k">Degrees</span><span class="mono">${esc(ex.scale.formula)}</span>` +
+      `<span class="k">Steps</span><span class="mono">${esc(ex.scale.steps)}</span>` +
+      `<span class="k">Sound</span><span>${esc(ex.scale.about)}</span>`;
+  }
+  renderStage(s);
+  renderPitchList(s);
+  for (const [layer, lc] of Object.entries(st.layers)) {
+    const box = $(`layer-${layer}`);
+    select(box, lc.voice);
+    box.classList.toggle("off", lc.voice === "Off" || ((layer === "drums" || layer === "pulse") && st.beat[layer] === "Off"));
+    $(`voice-${layer}`).textContent = ex.layers[layer].voice;
+    setRange(`lvl-${layer}`, lc.level, ex.layers[layer].level);
+  }
+  for (const [k, v] of Object.entries(st.shape)) setRange(`shape-${k}`, v, ex.shape[k]);
+  renderMelodyShape(s);
+  renderProgression(s);
+  renderParts(s);
+  renderPresetMatch(s);
+  renderLocks(s);
+  renderEvolve(s);
+}
+
+/* ---------- the compass: calm to energetic, dark to bright ---------- */
+let compassDrag = null;
+function renderCompass(s) {
+  const box = $("compass");
+  const st = s.state, ev = s.evolving, ex = s.explain.evolve;
+  const target = compassDrag || st.evolve.target;
+  if (!changed("compass", [target, ex.position, ev.trail])) return;
+  const S = 300, pad = 18, X = (e) => pad + e * (S - 2 * pad), Y = (b) => S - pad - b * (S - 2 * pad);
+  let h = `<svg viewBox="0 0 ${S} ${S}"><defs>
+    <linearGradient id="cx" x1="0" x2="1"><stop offset="0" stop-color="hsl(220 60% 30%)"/><stop offset="1" stop-color="hsl(5 75% 42%)"/></linearGradient>
+    <linearGradient id="cy" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></linearGradient></defs>
+    <rect width="${S}" height="${S}" fill="url(#cx)"/><rect width="${S}" height="${S}" fill="url(#cy)"/>
+    <line x1="${S / 2}" y1="0" x2="${S / 2}" y2="${S}" stroke="#ffffff22"/><line x1="0" y1="${S / 2}" x2="${S}" y2="${S / 2}" stroke="#ffffff22"/>
+    <text class="ax" x="6" y="${S / 2 - 6}">calm</text><text class="ax" x="${S - 6}" y="${S / 2 - 6}" text-anchor="end">energetic</text>
+    <text class="ax" x="${S / 2 + 6}" y="14">bright</text><text class="ax" x="${S / 2 + 6}" y="${S - 6}">dark</text>`;
+  for (const m of options.presets) h += `<text class="lm" x="${X(m.pos[0])}" y="${Y(m.pos[1])}" text-anchor="middle">${esc(m.id)}</text>`;
+  const trail = (ev.trail || []).concat([ex.position]);
+  if (trail.length > 1) {
+    h += `<polyline points="${trail.map((p) => `${X(p[0])},${Y(p[1])}`).join(" ")}" fill="none" stroke="#ffffff" stroke-opacity=".45" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+  }
+  if (target) {
+    const [tx, ty] = [X(target[0]), Y(target[1])];
+    h += `<circle cx="${tx}" cy="${ty}" r="11" fill="none" stroke="hsl(38 92% 58%)" stroke-width="2.5"/>
+      <line x1="${tx - 17}" y1="${ty}" x2="${tx + 17}" y2="${ty}" stroke="hsl(38 92% 58%)" stroke-width="2"/>
+      <line x1="${tx}" y1="${ty - 17}" x2="${tx}" y2="${ty + 17}" stroke="hsl(38 92% 58%)" stroke-width="2"/>
+      <line x1="${X(ex.position[0])}" y1="${Y(ex.position[1])}" x2="${tx}" y2="${ty}" stroke="hsl(38 92% 58%)" stroke-opacity=".5" stroke-dasharray="2 4"/>`;
+  }
+  h += `<circle cx="${X(ex.position[0])}" cy="${Y(ex.position[1])}" r="7" fill="#fff" stroke="#0b0d12" stroke-width="2"/></svg>`;
+  box.innerHTML = h;
+}
+function bindCompass() {
+  const box = $("compass");
+  const at = (ev) => {
+    const r = box.getBoundingClientRect(), pad = 18 / 300 * r.width;
+    const e = Math.min(1, Math.max(0, (ev.clientX - r.left - pad) / (r.width - 2 * pad)));
+    const b = Math.min(1, Math.max(0, 1 - (ev.clientY - r.top - pad) / (r.height - 2 * pad)));
+    return [Math.round(e * 100) / 100, Math.round(b * 100) / 100];
+  };
+  let timer = null;
+  const set = (ev) => {
+    compassDrag = at(ev);
+    if (status) renderCompass(status);
+    clearTimeout(timer);
+    timer = setTimeout(() => patch({ evolve: { target: compassDrag } }), 120);
+  };
+  box.addEventListener("pointerdown", (ev) => { box.setPointerCapture(ev.pointerId); set(ev); });
+  box.addEventListener("pointermove", (ev) => { if (compassDrag && ev.buttons) set(ev); });
+  box.addEventListener("pointerup", () => { setTimeout(() => { compassDrag = null; }, 400); });
+}
+
+function renderEvolve(s) {
+  const st = s.state, ex = s.explain, ev = s.evolving;
+  setRange("ev-rate", st.evolve.rate, ex.evolve.rate);
+  setRange("ev-size", st.evolve.size, ex.evolve.size);
+  setRange("ev-count", st.evolve.count ?? 0, ex.evolve.count);
+  setRange("ev-pull", st.evolve.pull ?? 0.5, ex.evolve.pull || "used once a direction is set");
+  $("heading").textContent = ex.evolve.heading;
+  $("noDirection").disabled = !st.evolve.target;
+  renderCompass(s);
+  const on = st.evolve.rate > 0;
+  $("evolveBtn").classList.toggle("on", on);
+  $("evolveBtn").textContent = on ? "Evolving" : "Evolve";
+  $("undo").disabled = !ev.history.length;
+  const names = st.locks.map((k) => options.lockable[k]).filter(Boolean);
+  $("lockedList").textContent = names.length ? names.join(" · ") : "nothing: everything may evolve";
+  if (changed("history", ev.history.map((h) => [h.what, h.by]))) {
+    $("history").innerHTML = ev.history.length ? ev.history.map((h) =>
+      `<div class="row"><span><span class="who">${h.by === "you" ? "you" : "evolved"}</span>${esc(h.what)}</span><span class="ago" data-ago="${h.ago}"></span></div>`).join("")
+      : `<p class="what">None yet.</p>`;
+  }
+  const ago = (n) => n < 60 ? `${n} s ago` : `${Math.round(n / 60)} min ago`;
+  $("history").querySelectorAll(".ago").forEach((e, i) => { e.textContent = ago(ev.history[i].ago); });
+  renderEvoStrip(s);
+}
+
+/* ---------- evolution, made visible: the strip, and glowing controls ---------- */
+// Which tab each setting lives in, and the element that shows it.
+const CAT = {
+  harmony: "hsl(38 92% 58%)", melody: "hsl(320 75% 65%)", beat: "hsl(190 80% 58%)", flow: "hsl(150 70% 55%)",
+  sound: "hsl(260 75% 72%)", top: "#c9cedb",
+};
+function homeOf(path) {
+  if (path === "volume") return "top";
+  if (path === "key" || path === "adaptive") return "harmony";
+  return PART_OF[path] || "sound";
+}
+function elementsFor(path) {
+  const [g, k] = path.split(".");
+  const els = [];
+  if (path === "key") els.push($("keys"));
+  else if (path === "tones") els.push($("presets"), $("pitchList"), $("cTR"));
+  else if (path === "adaptive") els.push($("adaptive"));
+  else if (path === "volume") els.push($("volume").closest(".vol"));
+  else if (g === "layers") els.push($(`layer-${k}`));
+  else if (g === "beat") els.push($(`pat-${k}`));
+  else if (path === "harmony.plain") els.push($("plain"));
+  else if (g === "shape") els.push($(`shape-${k}`) && $(`shape-${k}`).closest(".slider"));
+  else if (path === "melody.style") els.push($("melodyStyles"));
+  else if (path === "harmony.style") els.push($("progStyles"), $("cTL"));
+  else if (path === "harmony.loop") els.push($("loopEdit"), $("cTL"));
+  else if (g === "harmony") els.push($(`harm-${k}`) && $(`harm-${k}`).closest(".slider"));
+  else if (g === "melody") els.push($(`mel-${k}`) && $(`mel-${k}`).closest(".slider"));
+  return els.filter(Boolean);
+}
+function flash(el) {
+  el.classList.remove("evo-flash");
+  void el.offsetWidth;  // restart the animation
+  el.classList.add("evo-flash");
+}
+const pending = {};  // tab -> changes not yet seen
+function markTab(tab) {
+  for (const b of document.querySelectorAll(`[data-tab="${tab}"]`)) {
+    if (b.classList.contains("sel")) continue;  // on view: the control glows instead
+    pending[tab] = (pending[tab] || 0) + 1;
+    b.classList.add("evo-pending");
+    b.dataset.badge = pending[tab];
+  }
+}
+function clearTab(tab) {
+  delete pending[tab];
+  for (const b of document.querySelectorAll(`[data-tab="${tab}"]`)) { b.classList.remove("evo-pending"); delete b.dataset.badge; }
+}
+function showChange(path) {
+  const els = elementsFor(path);
+  els.forEach(flash);
+  const tab = homeOf(path);
+  if (tab !== "top") markTab(tab);
+  if (path === "key" || path === "tones") markTab("stage");
+}
+function openChange(path) {
+  const tab = homeOf(path);
+  if (tab === "top") { flash($("volume").closest(".vol")); return; }
+  for (const b of document.querySelectorAll(`[data-tab="${tab}"]`)) b.click();
+  const el = elementsFor(path).find((e) => e.closest(".panel") && !e.closest(".panel").hidden);
+  if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); flash(el); }
+}
+let seenHistory = null;
+function renderEvoStrip(s) {
+  const ev = s.evolving, on = s.state.evolve.rate > 0;
+  $("evoStrip").classList.toggle("on", on);
+  // the countdown ring: how far to the next change
+  const frac = on && s.playing && ev.next_s != null && ev.period ? Math.max(0, Math.min(1, 1 - ev.next_s / ev.period)) : 0;
+  $("evoArc").setAttribute("stroke-dasharray", `${(frac * 56.5).toFixed(1)} 57`);
+  $("evoRing").setAttribute("title", ev.next_s != null ? `next change in about ${ev.next_s} s` : "");
+  // new changes: glow where they are
+  const newest = ev.history.length ? ev.history[0].id : 0;
+  const fresh = seenHistory == null ? [] : ev.history.filter((h) => h.id > seenHistory);
+  seenHistory = Math.max(seenHistory ?? 0, newest);
+  for (const h of fresh.slice().reverse()) for (const it of h.items) showChange(it.path);
+  if (!changed("evoLog", [ev.history.map((h) => [h.id, h.what]), Math.floor(Date.now() / 10000)])) return;
+  const freshIds = new Set(fresh.map((h) => h.id));
+  const chips = [];
+  for (const h of ev.history.slice(0, 6)) {
+    // a preset or a surprise is one chip; other changes, a chip per setting
+    if (h.items.length > 2 && h.by === "you") chips.push({ path: h.items[0].path, text: h.what, ago: h.ago, by: h.by, isNew: freshIds.has(h.id) });
+    else for (const it of h.items) chips.push({ ...it, ago: h.ago, by: h.by, isNew: freshIds.has(h.id) });
+  }
+  $("evoLog").innerHTML = "";
+  chips.slice(0, 10).forEach((c, i) => {
+    const b = el("button", "evochip" + (c.isNew ? " new" : "") + (c.by === "you" ? " mine" : ""),
+      (c.by === "you" ? `<span class="who">you</span>` : "") + esc(c.text));
+    b.style.setProperty("--cat", CAT[homeOf(c.path)]);
+    b.style.opacity = Math.max(0.35, 1 - i * 0.12);
+    b.title = `${c.by === "you" ? "You" : "Evolution"}: ${c.text} (${c.ago < 60 ? c.ago + " s" : Math.round(c.ago / 60) + " min"} ago): tap to show it`;
+    b.onclick = () => openChange(c.path);
+    $("evoLog").append(b);
+  });
+}
+
+async function poll() {
+  try { render(await api("GET", "/api/status")); }
+  catch (e) { $("status").textContent = "not connected"; }
+  setTimeout(poll, document.hidden ? 5000 : 1000);
+}
+
+(async () => {
+  try { options = await api("GET", "/api/options"); }
+  catch (e) { $("status").textContent = "not connected"; setTimeout(() => location.reload(), 3000); return; }
+  build();
+  buildLegend();
+  layout();
+  poll();
+  pollEvents();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

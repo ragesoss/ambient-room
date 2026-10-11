@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run the service on the desktop with config/desktop.toml, in the foreground.
+here=$(cd "$(dirname "$0")/.." && pwd)
+cd "$here" && AMBIENT_ROOM_CONFIG=config/desktop.toml PYTHONPATH="$here" exec .venv/bin/python -m ambient.server

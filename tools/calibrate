@@ -1,0 +1,70 @@
+#!/bin/sh
+# Measure loudness and CPU per voice, per pattern and per mood, offline.
+#   tools/calibrate [SECONDS] [voices|phrases|patterns|moods|all]
+# Voices: each alone, playing its part's reference pattern (for the trims in
+# ambient/sounds.py). Patterns: each with its part's reference voice (for the
+# pattern gains). Phrases: each melody voice playing phrases (for PHRASE,
+# the phrase trims). Moods: level and CPU cost (for gain_db in the config).
+here=$(cd "$(dirname "$0")/.." && pwd)
+PYTHONPATH="$here" exec "$here/.venv/bin/python" - "${1:-40}" "${2:-all}" <<'PY'
+import copy, sys, tempfile
+from pathlib import Path
+from ambient.render import render
+from ambient.sounds import LAYERS, OFF, PATTERNS
+from ambient.state import DEFAULT, MOODS
+
+seconds = float(sys.argv[1])
+which = sys.argv[2]
+out = Path(tempfile.mkdtemp())
+PART = {"pad": "chords", "bass": "bass", "pulse": "pulse", "drums": "drums"}  # a voice's part -> its pattern
+REF_PATTERN = {"pad": "Held", "bass": "Eighths", "pulse": "Arp", "drums": "Rock"}
+REF_VOICE = {"chords": ("pad", "Warm"), "bass": ("bass", "Synth"), "pulse": ("pulse", "Pluck"),
+             "drums": ("drums", "Electronic")}
+
+
+def alone(layer, voice, pattern=None, style=None):
+    s = copy.deepcopy(DEFAULT)
+    s["volume"] = 1.0
+    s["beat"] = {"drums": OFF, "bass": "Held", "chords": "Held", "pulse": OFF}
+    for l in s["layers"]:
+        s["layers"][l]["level"] = 1.0
+        if l not in ("drums", "pulse"):
+            s["layers"][l]["voice"] = OFF
+    s["layers"][layer]["voice"] = voice
+    if layer in PART:
+        s["beat"][PART[layer]] = pattern or REF_PATTERN[layer]
+    if style:
+        s["melody"].update(style=style, phrase=0.55, pickups=0.4)
+    s["shape"].update(notes=0.5, tempo=0.6, pump=0.0)
+    s["harmony"].update(rhythm=0.5)
+    return s
+
+
+def show(label, s):
+    r = render(s, seconds, out / "v.wav")
+    print(f"  {label:24s} {r['gated_rms_dbfs']:6.1f} dBFS  peak {r['peak_dbfs']:6.1f}  cpu {r['cpu_pct']:4.0f}%", flush=True)
+
+
+if which in ("voices", "all"):
+    print(f"Each voice alone, level 1, volume 1, {seconds:g} s (gated rms per channel):")
+    for layer, voices in LAYERS.items():
+        for voice in voices:
+            show(f"{layer} {voice}" + (f" ({REF_PATTERN[layer]})" if layer in REF_PATTERN else ""), alone(layer, voice))
+if which in ("phrases", "all"):
+    print("Each melody voice playing phrases (PHRASE brings these to -30 dBFS):")
+    for voice in LAYERS["melody"]:
+        show(f"melody {voice}", alone("melody", voice, style="Phrases"))
+if which in ("patterns", "all"):
+    print("Each pattern, with its part's reference voice:")
+    for part, patterns in PATTERNS.items():
+        layer, voice = REF_VOICE[part]
+        for p in patterns:
+            show(f"{part} {p} ({voice})", alone(layer, voice, p))
+if which in ("moods", "all"):
+    print("Moods, volume 1:")
+    for name, mood in [("default", DEFAULT), *MOODS.items()]:
+        s = copy.deepcopy(mood)
+        s["volume"] = 1.0
+        r = render(s, seconds, out / "m.wav")
+        print(f"  {name:12s} {r['gated_rms_dbfs']:6.1f} dBFS  peak {r['peak_dbfs']:6.1f}  cpu {r['cpu_pct']:4.0f}%  ({r['notes']} notes)", flush=True)
+PY

@@ -1,0 +1,4 @@
+# numpy and ctcsound come from Debian (python3-numpy, python3-csound); the
+# venv is made with --system-site-packages to see them.
+fastapi
+uvicorn

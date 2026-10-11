@@ -1,0 +1,102 @@
+From 89c5bff815a09a0813c6107c5c030c6bcca85b8e Mon Sep 17 00:00:00 2001
+From: Sage Ross <ragesoss@gmail.com>
+Date: Sun, 11 Oct 2026 15:45:14 -0700
+Subject: [PATCH] fix(sfont): clamp pan as an integer so sqrt() never gets a
+ negative
+
+sfplay, sfplay3 and sflooper computed pan as (pan sum) / 1000.0 + 0.5
+and clamped the double. With gcc -ffast-math on FMA hardware, gcc fuses
+that into one multiply-add with 0.001 and turns the clamp into an
+integer test on the sum, so a sum of -500 (hard left) gives -1.04e-17,
+passes the clamp, and sqrt() of it makes the right channel NaN for the
+whole note. Clamp the integer sum instead; in exact arithmetic the
+levels are the same.
+
+Fixes #3403
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Opcodes/sfont.c | 36 ++++++++++++++++++++++++------------
+ 1 file changed, 24 insertions(+), 12 deletions(-)
+
+diff --git a/Opcodes/sfont.c b/Opcodes/sfont.c
+index e04f1af..84bf55a 100644
+--- a/Opcodes/sfont.c
++++ b/Opcodes/sfont.c
+@@ -381,7 +381,7 @@ static int32_t SfPlay_set(CSOUND *csound, SFPLAY *p)
+             
+             DWORD start=sample->dwStart;
+             cs_float attenuation;
+-            cs_double pan;
++            int32_t ipan;
+             cs_double freq, orgfreq;
+             cs_double tuneCorrection = split->coarseTune + layer->coarseTune +
+               (split->fineTune + layer->fineTune)*0.01;
+@@ -404,9 +404,13 @@ static int32_t SfPlay_set(CSOUND *csound, SFPLAY *p)
+                                    split->initialAttenuation);
+             attenuation = POWER(FL(2.0), (-FL(1.0)/FL(60.0)) * attenuation )
+               * GLOBAL_ATTENUATION;
+-            pan = (cs_double)(split->pan + layer->pan) / 1000.0 + 0.5;
+-            if (pan > 1.0) pan = 1.0;
+-            else if (pan < 0.0) pan = 0.0;
++            /* pan in 0.1% units, -500 is hard left.  Clamp it as an integer:
++               as a double, -500/1000.0 + 0.5 could come out slightly
++               negative (gcc -ffast-math, fused multiply-add), and sqrt()
++               of it made the right channel NaN (#3403) */
++            ipan = split->pan + layer->pan;
++            if (ipan > 500) ipan = 500;
++            else if (ipan < -500) ipan = -500;
+             /* Suggested fix from steven yi Oct 2002 */
+             p->base[spltNum] = sBase + start;
+             p->phs[spltNum] = (cs_double) split->startOffset + *p->ioffset;
+@@ -415,8 +419,10 @@ static int32_t SfPlay_set(CSOUND *csound, SFPLAY *p)
+               (sample->dwStartloop + split->startLoopOffset  - start);
+             p->endloop[spltNum] =  (DWORD) 
+               (sample->dwEndloop + split->endLoopOffset - start);
+-            p->leftlevel[spltNum] = (cs_float) sqrt(1.0-pan) * attenuation;
+-            p->rightlevel[spltNum] = (cs_float) sqrt(pan) * attenuation;
++            p->leftlevel[spltNum] =
++              (cs_float) sqrt((500 - ipan) / 1000.0) * attenuation;
++            p->rightlevel[spltNum] =
++              (cs_float) sqrt((500 + ipan) / 1000.0) * attenuation;
+             p->mode[spltNum]= split->sampleModes;
+             p->attack[spltNum] = split->attack*CS_EKR;
+             p->decay[spltNum] = split->decay*CS_EKR;
+@@ -2330,7 +2336,7 @@ static int32_t sflooper_init(CSOUND *csound, sflooper *p)
+             sfSample *sample = split->sample;
+             DWORD start=sample->dwStart;
+             cs_float attenuation;
+-            cs_double pan;
++            int32_t ipan;
+             cs_double freq, orgfreq;
+             cs_double tuneCorrection = split->coarseTune + layer->coarseTune +
+               (split->fineTune + layer->fineTune)*0.01;
+@@ -2353,14 +2359,20 @@ static int32_t sflooper_init(CSOUND *csound, sflooper *p)
+                                    split->initialAttenuation);
+             attenuation = POWER(FL(2.0), (-FL(1.0)/FL(60.0)) * attenuation )
+               * GLOBAL_ATTENUATION;
+-            pan = (cs_double)(split->pan + layer->pan) / 1000.0 + 0.5;
+-            if (pan > 1.0) pan = 1.0;
+-            else if (pan < 0.0) pan = 0.0;
++            /* pan in 0.1% units, -500 is hard left.  Clamp it as an integer:
++               as a double, -500/1000.0 + 0.5 could come out slightly
++               negative (gcc -ffast-math, fused multiply-add), and sqrt()
++               of it made the right channel NaN (#3403) */
++            ipan = split->pan + layer->pan;
++            if (ipan > 500) ipan = 500;
++            else if (ipan < -500) ipan = -500;
+             p->sBase[spltNum] = sBase;
+             p->sstart[spltNum] = start;
+             p->end[spltNum] =  (DWORD) (sample->dwEnd + split->endOffset);
+-            p->leftlevel[spltNum] = (cs_float) sqrt(1.0-pan) * attenuation;
+-            p->rightlevel[spltNum] = (cs_float) sqrt(pan) * attenuation;
++            p->leftlevel[spltNum] =
++              (cs_float) sqrt((500 - ipan) / 1000.0) * attenuation;
++            p->rightlevel[spltNum] =
++              (cs_float) sqrt((500 + ipan) / 1000.0) * attenuation;
+             spltNum++;
+           }
+         }
+-- 
+2.53.0
+
