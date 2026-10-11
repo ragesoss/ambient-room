@@ -15,6 +15,8 @@ sent. Both are in Debian's Csound 6.18.1 on the Pi (aarch64); see
     (the PR's commit), `csound-sfont-pan-nan-6.18.1.patch` (the same fix
     for 6.18.1), `sfplay-pan-nan-repro.csd`.
 - **Signed tuning fields.** Already fixed upstream (ceaad747), but in no
-  6.x release. `debian-bug-draft.txt` asks Debian to backport it (and
-  the pan fix), with `sfont-6.18.1-aarch64-fixes.patch` attached. It is
-  a draft; it has not been sent.
+  6.x release.
+
+Both fixes are in Csound's source, for Csound 7. Debian (6.18.1 in every
+release, 2026-10-11) gets them when it packages Csound 7. Not reported to
+Debian: anyone who needs them sooner can backport the commits.
