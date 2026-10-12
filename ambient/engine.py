@@ -86,6 +86,11 @@ class Engine:
         self.error = None
         self.underruns = 0
         self.invalid = 0
+        # A new Csound's score starts at 0. Kept from the last run, the time
+        # put the conductor's grid (reset just after this) as far ahead as
+        # that run was long: only texture played until the clock caught up
+        # (seen on the Pi, 2026-10-11).
+        self.now = 0.0
         self.stop_flag.clear()
         init_csound(ctcsound)
         cs = ctcsound.Csound()
