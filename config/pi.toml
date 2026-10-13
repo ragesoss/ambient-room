@@ -1,9 +1,10 @@
 # The Pi's config, installed once as /etc/ambient-room.toml by
 # setup/install.sh; later edits on the Pi are kept.
 
-# The other program on the Pi that plays through the same speakers: only
-# one plays at a time (ambient/peers.py).
-peers = ["http://127.0.0.1:8000"]
+# The other programs on the Pi that play through the same speakers: only
+# one plays at a time (ambient/peers.py). 8000: piano-recorder's practice
+# recorder; 8002: its exercise app (2026-10-13).
+peers = ["http://127.0.0.1:8000", "http://127.0.0.1:8002"]
 
 [output]
 engine = "csound"
