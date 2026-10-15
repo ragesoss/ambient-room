@@ -251,14 +251,16 @@ SOUND = {
     "Dub": ("Organ, a deep sub, a melodica-like organ lead, lots of echo",
             _s(("Organ", 0.5), ("Sub", 0.65), ("Organ lead", 0.5), drums=("Acoustic", 0.6),
                space=0.5, echo=0.65, bright=0.35, drive=0.2)),
+    # The band sounds' rhythm guitar sits 6 dB under the lead (gated rms, each part alone in its moods:
+    # Bluegrass, Red Wing; 2026-10-15). Country band's, level with the dobro (0.35), was too loud by ear.
     "String band": ("Acoustic guitar, upright bass, a fiddle out front, a banjo; a small dry room",
-                    _s(("Acoustic guitar", 0.3), ("Upright", 0.4), ("Fiddle", 1.0), (OFF, 0.3), ("Banjo", 0.8),
+                    _s(("Acoustic guitar", 0.22), ("Upright", 0.4), ("Fiddle", 1.0), (OFF, 0.3), ("Banjo", 0.8),
                        drums=("Acoustic", 0.5), space=0.3, echo=0.0, bright=0.55, motion=0.15, drive=0.0)),
     "Folk": ("Fingerpicked acoustic guitar, a soft upright bass, harmonica",
              _s(("Acoustic guitar", 0.35), ("Upright", 0.35), ("Harmonica", 1.0), drums=("Acoustic", 0.5),
                 space=0.4, echo=0.05, bright=0.5, drive=0.0)),
     "Country band": ("Acoustic guitar, upright bass, a dobro lead, a banjo's rolls, brushes on a kit",
-                     _s(("Acoustic guitar", 0.35), ("Upright", 0.4), ("Dobro", 1.0), pulse=("Banjo", 0.4),
+                     _s(("Acoustic guitar", 0.18), ("Upright", 0.4), ("Dobro", 1.0), pulse=("Banjo", 0.4),
                         drums=("Acoustic", 0.3), space=0.35, echo=0.1, bright=0.5, motion=0.15, drive=0.0)),
     "Chip": ("8-bit: square waves, a synth bass",
              _s(("Synth stab", 0.3), ("Synth", 0.5), ("Chip", 0.7), pulse=("Chip", 0.3), drums=("Electronic", 0.6),
