@@ -8,10 +8,10 @@ peers = ["http://127.0.0.1:8000", "http://127.0.0.1:8002"]
 
 [output]
 engine = "csound"
-# piano-recorder's slot 3: the BMG-04F's USB playback, which enters the
-# mixer on channel 3/4 with the MP3/USB button down. Its facts are in that
-# project's docs/components.md.
-device = "plughw:CARD=spker,DEV=0"
+# piano-recorder's slot 3: the Scarlett 18i8 3rd Gen (from 2026-10-14). plughw puts the
+# stereo on its PCM 1-2, which its internal mixer sends to the speakers. Its facts are in
+# that project's docs/components.md. (Before: the BMG-04F, plughw:CARD=spker,DEV=0.)
+device = "plughw:CARD=USB,DEV=0"
 # aplay's buffer. Large, because the Pi 3's USB is the weak point and the
 # music needs no quick response.
 buffer_ms = 400
