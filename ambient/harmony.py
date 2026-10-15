@@ -388,14 +388,26 @@ def borrowable(slots) -> list[str]:
     return out
 
 
+LETTERS_UP = [0, 2, 4, 6, 1]  # letters above the root of a chord's tones as built: root, third, fifth, seventh, ninth
+
+
 def chord_scale(slots, rel_pcs: list[int]) -> list[int]:
-    """The scale while a chord sounds: a borrowed chord's notes replace the
-    scale's tones a half step from them (over iv in C major, A♭ for A)."""
+    """The scale while a chord sounds: a borrowed chord's note replaces the
+    scale's tone of the same letter, the one it alters (over iv in C major,
+    A♭ for A; over A7 in G, C♯ for C, and D stays). rel_pcs: the chord's
+    tones above the key, as built (root, third, fifth, seventh, ninth). A
+    chord tone or the home note is never taken out."""
     out = set(slots)
-    for x in rel_pcs:
-        if x not in out:
-            out -= {(x + 1) % 12, (x - 1) % 12} - set(rel_pcs) - {0}
-            out.add(x)
+    names = music.degree_names(slots)
+    number = {s: int(n.strip("b#")) for s, n in names.items()}  # each scale tone's degree number (its letter)
+    root = rel_pcs[0] if rel_pcs else 0
+    root_number = number.get(root, int(music.DEGREES[root].strip("b#")))
+    for i, x in enumerate(rel_pcs):
+        if x in out:
+            continue
+        letter = (root_number - 1 + LETTERS_UP[min(i, 4)]) % 7 + 1
+        out -= {s for s in out if number.get(s) == letter and s not in rel_pcs and s != 0}
+        out.add(x)
     return sorted(out)
 
 

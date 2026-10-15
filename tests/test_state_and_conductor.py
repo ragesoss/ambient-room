@@ -369,18 +369,18 @@ def test_the_melody_follows_the_harmony_home():
                             "harmony": {"style": "Loop", "loop": loop, "rhythm": 1.0}})
         c.apply(s)
         run(c, clock, 40)
-        bar, out, step_k = -1, [], {}
+        bar, last, step_k = -1, {}, {}
         for e in c.events:
             if e["kind"] == "step":
                 bar += e["k"] == 0
                 step_k[e["t"]] = (bar, e["k"])
-            elif e["kind"] == "melody" and step_k.get(e["t"]) and step_k[e["t"]][1] == 8 and step_k[e["t"]][0] % 4 == 3:
-                out.append(e["slot"])  # the cadence note: beat 3 of a phrase's last bar
-        return out
+            elif e["kind"] == "melody" and step_k.get(e["t"]) and step_k[e["t"]][0] % 4 == 3:
+                last[step_k[e["t"]][0]] = e["slot"]  # the cadence note: a phrase's last bar's last (no pickups)
+        return [last[b] for b in sorted(last)]
     home = cadences([6, 2, 5, 1])  # phrases end over I: answers, on the home note
     assert len(home) >= 3 and all(x == 0 for x in home), home
-    away = cadences([1, 5, 6, 4])  # over IV: questions, on a chord tone that is not F
-    assert len(away) >= 3 and all(x in (9, 0, 4) for x in away), away
+    away = cadences([1, 5, 6, 4])  # over IV (F A C, E and G as it grows): questions, on a chord tone, not the home note
+    assert len(away) >= 3 and all(x in (5, 9, 4, 7) for x in away), away
 
 
 def test_loops_are_checked():
@@ -598,8 +598,11 @@ def test_notes_past_busy_run_on_and_then_go_frenetic():
     frantic, frantic32, fr = per_bar(1.0)
     assert busy < running < frantic and not busy32 and frantic32
     assert frantic > 16  # faster than sixteenths
-    steps = [abs(b[2] - a[2]) for a, b in zip(run, run[1:])]
-    assert steps.count(0) / len(steps) < 0.1  # a fast run rarely repeats a note
+    def repeats(seed):  # a fast run rarely repeats a note (one seed's run can, by chance: 5% to 14% over these ten)
+        played = _melodist_run("Phrases", 32, seed, notes=0.875, phrase=0.3)
+        steps = [abs(b[2] - a[2]) for a, b in zip(played, played[1:])]
+        return steps.count(0) / len(steps)
+    assert sum(repeats(seed) for seed in range(10)) / 10 < 0.1
 
 
 def test_sampled_voices_fall_back_to_their_models():

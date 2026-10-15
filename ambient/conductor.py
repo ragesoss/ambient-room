@@ -15,7 +15,7 @@ import math
 import random
 from collections import deque
 
-from . import music
+from . import music, samples
 from .harmony import (Harmonist, at_step, chord_bars, chord_scale, item_slot, loop_chord, numeral as degree_numeral,
                       played, timeline)
 from .melody import Melodist
@@ -36,6 +36,20 @@ MELODY_STEPS = {"Lead": (2, 6), "Synth pluck": (2, 4), "Chip": (1, 4), "Brass": 
 MELODY_RING = {"Bell": 2.5, "Pluck": 1.5, "Kalimba": 1.5, "Felt": 1.8, "E. piano": 1.6, "Vibes": 2.5,
                "Marimba": 1.0, "Steel drum": 1.4, "Harp": 2.0, "Guitar": 1.6, "Synth pluck": 0.5,
                "Mandolin": 0.6, "Banjo": 0.5, "Acoustic guitar": 1.2, "Dobro": 1.4, "Nylon guitar": 1.2}
+
+# A melody voice played by string (the dobro, ambient/samples.py): a note on the string just played,
+# up to 4 semitones from it, slides there now and then instead of a new pick; a note an eighth or
+# longer is now and then picked 1-2 semitones below and slid up. The slides take SLIDE_S a semitone
+# (the MuseScore dobro spike's, from the player's slides, ../dobro-transcription
+# docs/musescore-dobro-rendering-spike.md) and a slide between notes arrives on the beat.
+SLIDE, SLIDE_IN, SLIDE_S = 0.3, 0.1, 0.08
+
+# Guitar voices play their chords' patterns as guitar chords (music.guitar_shape): the bass on its
+# own string, then the other strings strummed (STRUM_S apart, down low to high), damped short for a
+# chick or a chop (CHICK_S)
+GUITARS = {"Acoustic guitar", "Nylon guitar"}
+STRUM_S, CHICK_S = 0.007, 0.16
+STRUM_GAIN = 1.26  # +2 dB: damped short, the chords part measured 2 dB under its old strokes (2026-10-15)
 
 # Drum patterns, one bar of sixteenths each: a digit is a hit's strength
 # (1-9), "." a rest.
@@ -133,9 +147,12 @@ def center(height: float) -> float:
     return 50 + 18 * height
 
 
-def melody_range(height: float) -> tuple[int, int]:
+def melody_range(height: float, wide: float = 0.5) -> tuple[int, int]:
+    """The melody's notes: 19 semitones above the chords, widening past the
+    middle of the Range control to 26 (the dobro tunes span 21 to 24)."""
     c = center(height)
-    return int(c + 7), int(c + 26)
+    extra = round(14 * max(0.0, wide - 0.5))
+    return int(c + 7) - extra // 2, int(c + 26) + extra - extra // 2
 
 
 def hits(pattern: str, k: int) -> float:
@@ -167,6 +184,11 @@ class Conductor:
         self.slot = 0  # chords since the start: each chord_bars long, on bar lines
         self.chord_end = self.next_step  # when the sounding chord gives way
         self.next_melody = self.next_step
+        # a melody voice played by string (the dobro): what each string holds, (note, when picked),
+        # where the bar is (a fret), the string last played
+        self.held: dict[int, tuple[int, float]] = {}
+        self.bar_pos, self.last_string = 0, None
+        self.hand = random.Random(0)  # how a note is played (slides): its own dice, so the notes stay the same
         self.change_now = False
         self.root: int | None = None  # the chord root's slot
         self.voicing: list[int] = []  # the notes the chords part plays
@@ -316,8 +338,9 @@ class Conductor:
         if k == 0 or new_chord:
             self.plan_bass(k)
         if k == 0 and shaped:  # this bar's melody, against the chords sounding in it
-            notes = self.scale_notes(*melody_range(s["shape"]["height"]))
-            self.melodist.plan_bar(self.bar, self.steps, s, notes, self.chord_in_bar, self.lead_in_bar)
+            notes = self.scale_notes(*melody_range(s["shape"]["height"], s["melody"]["range"]))
+            self.melodist.plan_bar(self.bar, self.steps, s, notes, self.chord_in_bar, self.lead_in_bar,
+                                   self.respell_in_bar)
         tp = t + (swing_delay(s["shape"]["swing"], step) if k % 2 else 0.0)
         self.emit(t, "step", k=k)
         self.drums(tp, k)
@@ -419,6 +442,28 @@ class Conductor:
             return self.pcs or []
         _, i, _ = at_step(h, self.loop_step(onset))
         return loop_chord(s["key"], self.slots(), h, i)[0]
+
+    def respell_in_bar(self, onset: float, midi: int) -> int:
+        """A note from the bar's scale (as it is under the bar's first chord), as the scale is under
+        the chord sounding at this sixteenth: the same letter, altered as that chord has it (under G7
+        after G, F for F#)."""
+        if onset == 0 or self.state["harmony"]["style"] != "Loop":
+            return midi
+        first, now = self.chord_in_bar(0), self.chord_in_bar(int(onset))
+        if not first or not now or first == now:
+            return midi
+        key = music.KEYS.index(self.state["key"])
+        before = chord_scale(self.slots(), [(p - key) % 12 for p in first])
+        after = chord_scale(self.slots(), [(p - key) % 12 for p in now])
+        pc = (midi - key) % 12
+        if pc in after or pc not in before:
+            return midi
+        names = music.degree_names(after)
+        letter = int(music.degree_names(before)[pc].strip("b#"))
+        same = [x for x in after if int(names[x].strip("b#")) == letter]
+        if not same:
+            return midi
+        return midi + (same[0] - pc + 6) % 12 - 6
 
     def lead_in_bar(self, onset: int) -> str | None:
         """When the harmony has a form, it leads the melody's cadences: over the
@@ -590,19 +635,31 @@ class Conductor:
             length = CHORD_LEN[pat]
         step = self.step_s()
         dur = length * step * 0.9
-        amp = 0.11 * trim("pad", v) * (4 / len(self.voicing)) ** 0.5 * gain("chords", pat) * h
         notes = list(self.voicing)
         delay = 0.0
+        shape = self.guitar_chord() if v in GUITARS and not held else None
+        if shape:  # a guitar: its chord's strings, strummed down; a chop or a stab damped short
+            notes = shape[1:] if pat in ("Offbeat", "Stabs", "Chop") else shape
+            delay = STRUM_S
+            if pat in ("Offbeat", "Stabs", "Chop"):
+                dur = CHICK_S
+        amp = 0.11 * trim("pad", v) * (4 / len(notes)) ** 0.5 * gain("chords", pat) * h * (STRUM_GAIN if shape else 1)
         if pat == "Strum":  # down: low to high; up: the top notes, high to low
             notes = notes if way == "down" else notes[::-1][:3]
-            delay = 0.012 if way == "down" else 0.008
+            delay = (STRUM_S if shape else 0.012) if way == "down" else 0.008
         for i, n in enumerate(notes):
             at = t + i * delay
             if held:
                 self.engine.note(at, instr("pad", v), dur + 0.08, self.hz(n), amp, 0.006, 0.08, self.gen)
             else:
-                self.engine.note(at, instr("pad", v), max(dur, 0.25), self.hz(n), amp, LEVEL["pad"], dur * 0.5)
+                self.engine.note(at, instr("pad", v), max(dur, 0.1 if shape else 0.25), self.hz(n), amp, LEVEL["pad"],
+                                 dur * 0.5)
         self.emit(t, "stab", v=round(h, 2))
+
+    def guitar_chord(self) -> list[int] | None:
+        """The sounding chord as a guitar plays it, low to high (music.guitar_shape); None where
+        no open shape has it (the patterns then use the chords' own voicing)."""
+        return music.guitar_shape(self.pcs) if self.pcs else None
 
     def picked(self, t: float, k: int, v: str, held: bool, pat: str) -> None:
         """A guitar's own bass and chord: boom-chick (a low root, a strum on
@@ -610,15 +667,25 @@ class Conductor:
         alternating root and fifth on the beats, fingers between)."""
         if k % 2:
             return
-        chord = sorted(self.voicing)
+        shape = self.guitar_chord() if v in GUITARS else None
         rel = [(p - self.pcs[0]) % 12 for p in self.pcs]
-        low = min(chord) - 12
-        while low % 12 != self.pcs[0] % 12:  # the root, below the chord
-            low += 1
         f = rel[2] if len(rel) > 2 else 7
-        fifth = low + f - 12 if low + f - 12 >= 36 else low + f  # the fifth below the root, unless that is too low
+        if shape:  # the root on its string; the alternate bass a fifth below on the string under it, or above
+            chord, low = shape[1:], shape[0]
+            fifth = low + f - 12 if low + f - 12 >= music.GUITAR[0] else low + f
+        else:
+            chord = sorted(self.voicing)
+            low = min(chord) - 12
+            while low % 12 != self.pcs[0] % 12:  # the root, below the chord
+                low += 1
+            fifth = low + f - 12 if low + f - 12 >= 36 else low + f  # the fifth below the root, unless that is too low
         if pat == "Boom-chick":
-            hits = {0: ([low], 1.0, 3), 4: (chord, 0.75, 1.5), 8: ([fifth], 0.9, 3), 12: (chord, 0.75, 1.5)}
+            if shape:  # the chick: the strings above the bass, strummed down and damped
+                chick = [n for n in chord if n > max(low, fifth)] or chord
+                hits = {0: ([low], 1.0, 3), 4: (chick, 0.7, CHICK_S / self.step_s()), 8: ([fifth], 0.9, 3),
+                        12: (chick, 0.7, CHICK_S / self.step_s())}
+            else:
+                hits = {0: ([low], 1.0, 3), 4: (chord, 0.75, 1.5), 8: ([fifth], 0.9, 3), 12: (chord, 0.75, 1.5)}
         else:
             top, mid = chord[-1], chord[-2] if len(chord) > 1 else chord[-1]
             hits = {0: ([low, top], 1.0, 3), 2: ([mid], 0.6, 2), 4: ([fifth], 0.85, 3), 6: ([top], 0.6, 2),
@@ -628,12 +695,15 @@ class Conductor:
         notes, h, length = hits[k]
         dur = length * self.step_s() * 0.9
         amp = 0.11 * trim("pad", v) * gain("chords", pat) * h
+        if shape and len(notes) > 2:
+            amp *= STRUM_GAIN * (3 / len(notes)) ** 0.5  # a strum of four or five strings: as loud as the old three
         for i, n in enumerate(notes):
-            at = t + i * (0.01 if len(notes) > 2 else 0)
+            at = t + i * ((STRUM_S if shape else 0.01) if len(notes) > 2 else 0)
             if held:
                 self.engine.note(at, instr("pad", v), dur + 0.08, self.hz(n), amp, 0.006, 0.08, self.gen)
             else:
-                self.engine.note(at, instr("pad", v), max(dur, 0.25), self.hz(n), amp, LEVEL["pad"], dur * 0.5)
+                self.engine.note(at, instr("pad", v), max(dur, 0.1 if shape else 0.25), self.hz(n), amp, LEVEL["pad"],
+                                 dur * 0.5)
         self.emit(t, "stab", v=round(h, 2))
 
     # Parts on the grid
@@ -685,10 +755,13 @@ class Conductor:
             chord = self.full or self.voicing
             if not chord:
                 return
-            up = sorted({n + 12 for n in chord})
+            # a five-string banjo's: the chord's notes from G3 to A4 (its D, G, B and D strings, low
+            # frets), the thumb's drone the home note near its short fifth string's G4
+            pcs = {n % 12 for n in chord}
+            up = [n for n in range(55, 70) if n % 12 in pcs] or sorted({n + 12 for n in chord})
             low, mid, top = up[0], up[len(up) // 2], up[-1]
             key = music.KEYS.index(s["key"])
-            drone = min((n for n in range(top - 6, top + 7) if n % 12 == key), default=top)
+            drone = min((n for n in range(62, 74) if n % 12 == key), key=lambda n: abs(n - 67))
             finger = ROLLS[pat][k % 8]
             if finger == "T":
                 thumbs = [j for j in range(k % 8 + 1) if ROLLS[pat][j] == "T"]
@@ -710,10 +783,57 @@ class Conductor:
             if v == OFF:
                 continue
             at = t + frac * self.step_s()  # a thirty-second falls between the sixteenths
+            amp = 0.09 * trim("melody", v) * phrase_trim(v) * (0.55 + 0.45 * vel)
+            if samples.strung("melody", v):
+                self.play_strung(at, note, length * self.step_s(), amp)
+                continue
             dur = max(length * self.step_s() * 0.95, MELODY_RING.get(v, 0.06))
-            self.engine.note(at, instr("melody", v), dur, self.hz(note),
-                             0.09 * trim("melody", v) * phrase_trim(v) * (0.55 + 0.45 * vel), LEVEL["melody"])
+            self.engine.note(at, instr("melody", v), dur, self.hz(note), amp, LEVEL["melody"])
             self.emit(at, "melody", dur=round(dur, 3), **self.pitch_of(note))
+
+    def pick_string(self, note: int, strings: tuple[int, ...]) -> tuple[int, int]:
+        """The string (0: the highest) and fret for a note: an open string, or near where the bar
+        is; a little dearer the lower the string, cheaper staying on the string just played."""
+        best = None
+        for k, open_note in enumerate(strings):
+            fret = note - open_note
+            if not 0 <= fret <= 15:
+                continue
+            cost = (0.3 if fret == 0 else abs(fret - self.bar_pos)) + 0.1 * k
+            if k == self.last_string and fret and abs(fret - self.bar_pos) <= 4:
+                cost -= 0.5
+            if best is None or cost < best[0]:
+                best = (cost, k, fret)
+        if best is None:  # beyond the instrument: the nearest string
+            k = min(range(len(strings)), key=lambda i: abs(note - strings[i]))
+            return k, note - strings[k]
+        _, k, fret = best
+        if fret:
+            self.bar_pos = fret
+        self.last_string = k
+        return k, fret
+
+    def play_strung(self, at: float, note: int, length_s: float, amp: float) -> None:
+        """A melody note on a string of the voice's (the dobro's): it rings until that string is
+        picked again (or samples.RING_S); now and then it slides from the string's last note
+        instead of a new pick, or is picked below its pitch and slid up (SLIDE, SLIDE_IN)."""
+        inst, strings = samples.strung("melody", self.voice("melody"))
+        k, _ = self.pick_string(note, strings)
+        p1 = inst + (k + 1) / 10  # held per string: a new note on it replaces, or ties to, the last
+        held, rng = self.held.get(k), self.hand
+        live = held is not None and at - held[1] < samples.RING_S - 0.2
+        if live and 0 < abs(note - held[0]) <= 4 and rng.random() < SLIDE:
+            glide = SLIDE_S * abs(note - held[0])
+            start = max(held[1] + 0.03, at - glide)  # hold, then slide, arriving on the beat
+            self.engine.note(start, p1, -1, self.hz(note), amp, LEVEL["melody"], 0, at - start)
+            self.held[k] = (note, held[1])
+        else:
+            if live:
+                self.engine.note(at, -p1, 0)
+            slide_in = rng.choice([1, 2]) if length_s >= 0.2 and rng.random() < SLIDE_IN else 0
+            self.engine.note(at, p1, -1, self.hz(note), amp, LEVEL["melody"], slide_in, SLIDE_S * slide_in)
+            self.held[k] = (note, at)
+        self.emit(at, "melody", dur=round(length_s, 3), **self.pitch_of(note))
 
     def melody(self, t: float) -> None:
         s, rng = self.state, self.rng
@@ -739,8 +859,11 @@ class Conductor:
             dur = self.step_s() * rng.randint(*MELODY_STEPS[v])
         else:
             dur = rng.uniform(*MELODY_DUR[v])
-        self.engine.note(t, instr("melody", v), dur, self.hz(note), 0.09 * trim("melody", v) * rng.uniform(0.6, 1),
-                         LEVEL["melody"])
+        amp = 0.09 * trim("melody", v) * rng.uniform(0.6, 1)
+        if samples.strung("melody", v):
+            self.play_strung(t, note, dur, amp)
+            return
+        self.engine.note(t, instr("melody", v), dur, self.hz(note), amp, LEVEL["melody"])
         self.emit(t, "melody", dur=round(dur, 3), **self.pitch_of(note))
 
     # Texture: a held note, changed when its voice changes

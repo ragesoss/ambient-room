@@ -9,13 +9,14 @@ Csound plays them with sfplay3m at each note's exact frequency (the sample
 nearest in pitch, resampled), so just intonation works as for every voice.
 Each sampled instrument gets three instrument numbers, one per calling
 convention: struck notes (melody, rhythm part, struck chords) at 200 + n,
-bass notes at 300 + n.
+bass notes at 300 + n, and, for a sample that slides (the dobro), the melody's
+notes at 400 + n: held by string (a fraction of the number), tied to slide.
 """
 
 from dataclasses import dataclass
 from pathlib import Path
 
-FONTS = {"acoustic": "acoustic.sf2", "dobro": "dobro.sf2"}
+FONTS = {"acoustic": "acoustic.sf2", "generaluser": "generaluser.sf2", "dobro": "dobro.sf2", "upright": "upright.sf2"}
 
 
 @dataclass(frozen=True)
@@ -27,29 +28,39 @@ class Sample:
     # seconds to fade 60 dB, for a plucked recording that settles into a
     # quiet loop (FluidR3's do, 14-30 dB down); None: as recorded
     decay: float | None = None
+    # the melody plays it by string: notes ring until their string is picked again, and slide
+    # (ambient/conductor.py, Strings); the strings' open notes, highest first
+    strings: tuple[int, ...] | None = None
 
 
 SAMPLES = {
     "fiddle": Sample("acoustic", 0, 110, "Recorded: a fiddle (FluidR3 GM)."),
-    "banjo": Sample("acoustic", 0, 105, "Recorded: a five-string banjo (FluidR3 GM).", 2.5),
-    "steel guitar": Sample("acoustic", 0, 25, "Recorded: a steel-string acoustic guitar (FluidR3 GM).", 4.0),
+    # GeneralUser GS's (2026-10-15): its envelopes fall 60 dB in 2.6 s (the banjo) and 6 s (the guitar)
+    "banjo": Sample("generaluser", 0, 105, "Recorded: a five-string banjo (GeneralUser GS).", 2.6),
+    "steel guitar": Sample("generaluser", 0, 25, "Recorded: a steel-string acoustic guitar (GeneralUser GS).", 6.0),
     "nylon guitar": Sample("acoustic", 0, 24, "Recorded: a nylon-string classical guitar (FluidR3 GM).", 3.5),
     "acoustic bass": Sample("acoustic", 0, 32, "Recorded: an upright bass, plucked (FluidR3 GM).", 3.0),
     "harmonica": Sample("acoustic", 0, 22, "Recorded: a harmonica (FluidR3 GM)."),
-    "dobro": Sample("dobro", 0, 25, "Recorded: the player's own Beard squareneck resonator guitar, in open G."),
+    "dobro": Sample("dobro", 0, 25, "Recorded: the player's own Beard squareneck resonator guitar, in open G.",
+                    strings=(62, 59, 55, 50, 47, 43)),
+    "upright bass": Sample("upright", 0, 32, "Recorded: the player's own upright bass, plucked (through a pickup "
+                                             "on its tailpiece)."),
 }
 
 # Which voices are sampled: (part, voice) -> sample, and its loudness trim in
 # dB: to the same levels as the synthesized voices (ambient/sounds.py), in
-# two passes of tools/calibrate on the desktop, 2026-10-11
+# two passes of tools/calibrate on the desktop, 2026-10-11. The guitar and the
+# banjo from GeneralUser GS (2026-10-15) at FluidR3's levels, measured alone
+# (Boom-chick, Roll) on the same notes; the melody's by the chords' offsets
 VOICES = {
-    ("melody", "Fiddle"): ("fiddle", 7.6), ("melody", "Banjo"): ("banjo", 24.3),
+    ("melody", "Fiddle"): ("fiddle", 7.6), ("melody", "Banjo"): ("banjo", 23.4),
     ("melody", "Acoustic guitar"): ("steel guitar", 24.3), ("melody", "Nylon guitar"): ("nylon guitar", 25.0),
     ("melody", "Harmonica"): ("harmonica", 20.2), ("melody", "Dobro"): ("dobro", 27.4),
     ("pad", "Acoustic guitar"): ("steel guitar", 24.3), ("pad", "Nylon guitar"): ("nylon guitar", 23.1),
-    ("pad", "Banjo"): ("banjo", 26.6),
-    ("pulse", "Banjo"): ("banjo", 18.5), ("pulse", "Acoustic guitar"): ("steel guitar", 17.4),
-    ("bass", "Upright"): ("acoustic bass", 16.8),
+    ("pad", "Banjo"): ("banjo", 25.7),
+    ("pulse", "Banjo"): ("banjo", 23.0), ("pulse", "Acoustic guitar"): ("steel guitar", 16.7),
+    # the player's own upright (2026-10-15): 6.6 dB under FluidR3's at its trim, Eighths alone, so 16.8 + 6.6
+    ("bass", "Upright"): ("upright bass", 23.4),
 }
 
 # Melody voices playing phrases, against their scattered level (dB), as PHRASE in ambient/sounds.py
@@ -60,7 +71,8 @@ PHRASE: dict[str, float] = {"Fiddle": 9.1, "Banjo": 1.6, "Acoustic guitar": -1.1
 # voice synthesized) until an engine has loaded the fonts.
 AVAILABLE: dict[str, int] = {}
 
-STRUCK, BASS = 200, 300
+STRUCK, BASS, STRUNG = 200, 300, 400
+RING_S = 4.0  # a note held by string sounds at most this long (the dobro's samples fade out by 1.2-7.6 s)
 
 _BODIES = f"""
 ; ---- sampled voices (ambient/samples.py): p1 - {STRUCK} or - {BASS} is the preset ----
@@ -85,6 +97,28 @@ instr {{struck}} ; a sampled note: p4 Hz, p5 level, p6 whose level (Lvl)
   ; csound/csound#3403); the mono ones are fine on both
   aS sfplay3m 100, iKey, p5 / 32768, p4, iP, 1
   aL, aR Place aS * kE * Lvl(p6), random:i(0.3, 0.7)
+  Send aL, aR, 0.85, 0.6, 0.35
+endin
+
+instr {{strung}} ; a sampled note held on a string (p1's fraction): p4 Hz, p5 level, p6 whose level (Lvl), p7 slide-in
+  ; (semitones below, 0: none), p8 slide time (s). Held (p3 < 0) until the string is picked again (-p1) or {RING_S:g} s
+  ; have passed; a note tied to it (the same p1) slides there from wherever the string is, with no new pick
+  iStart = p4 * 2 ^ (-p7 / 12)
+  kTarget = p4
+  iHalf = max(p8, 0.005) / 3
+  tigoto Sounding
+  iP = int(p1) - {STRUNG}
+  iKey = limit(round(69 + 12 * log2(p4 / 440)), 0, 127)
+  iPan random 0.3, 0.7
+  kF portk kTarget, iHalf, iStart
+  kE linsegr 1, 3600, 1, 0.04, 0
+  kAge timeinsts
+  aS sfplay3m 100, iKey, p5 / 32768, kF, iP, 1
+Sounding:
+  if kAge > {RING_S:g} then
+    turnoff
+  endif
+  aL, aR Place aS * kE * Lvl(p6), iPan
   Send aL, aR, 0.85, 0.6, 0.35
 endin
 
@@ -125,7 +159,13 @@ def orchestra(sounds_dir: Path | None) -> str:
     nums = lambda base: ", ".join(str(base + n) for n in AVAILABLE.values())
     decays = [SAMPLES[name].decay or 0 for name in AVAILABLE]
     lines.append("giDecay[] fillarray " + ", ".join(f"{d:g}" for d in decays))
-    return "\n".join(lines) + "\n" + _BODIES.replace("{struck}", nums(STRUCK)).replace("{bass}", nums(BASS))
+    strung = [STRUNG + n for name, n in AVAILABLE.items() if SAMPLES[name].strings]
+    bodies = _BODIES.replace("{struck}", nums(STRUCK)).replace("{bass}", nums(BASS))
+    if strung:
+        bodies = bodies.replace("{strung}", ", ".join(map(str, strung)))
+    else:  # no strung sample loaded: leave its instrument out
+        bodies = bodies[:bodies.index("instr {strung}")] + bodies[bodies.index("instr " + nums(BASS).split(",")[0]):]
+    return "\n".join(lines) + "\n" + bodies
 
 
 def sampled(layer: str, voice: str) -> str | None:
@@ -139,6 +179,14 @@ def instrument(layer: str, voice: str) -> int | None:
     if s is None:
         return None
     return (BASS if layer == "bass" else STRUCK) + AVAILABLE[s]
+
+
+def strung(layer: str, voice: str) -> tuple[int, tuple[int, ...]] | None:
+    """For a melody voice played by string (the dobro): its held instrument and its strings."""
+    s = sampled(layer, voice)
+    if layer != "melody" or s is None or not SAMPLES[s].strings:
+        return None
+    return STRUNG + AVAILABLE[s], SAMPLES[s].strings
 
 
 def trim_db(layer: str, voice: str) -> float:

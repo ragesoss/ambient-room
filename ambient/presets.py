@@ -77,6 +77,27 @@ FIDDLE_TUNE = parse_chart("""
 | E / | E7 / |
 """, "C", preset_slots("major"))
 
+# Three dobro tunes the player plays (~/play/dobro-transcription, tunes/dobro), from the player's
+# Strum Machine charts (2026-10-14), read in G and kept as degrees. The dominants are written as
+# sevenths where the melodies lean on them (Red Wing's C over D, Down Yonder's G over A, its F
+# over G going to C): a written seventh sounds even with plain triads, and the melody counts it
+# a chord tone. Red Wing and Down Yonder are laid in two: two bars of the tune to a bar here, at
+# half its tempo, so the melody's running sixteenths are the tune's eighths (tools/tune_fit.py).
+# A chord lasts a beat here at least (half a bar of the tune): Red Wing's turnaround A D G in its
+# 8th bar is D7 G.
+RED_WING = parse_chart("""
+| G / C G | D7 G A7 D7 | G / C G | D7 G D7 G |
+| C G | D7 G | C G | D7 G |
+""", "G", preset_slots("major"))
+DOWN_YONDER = parse_chart("""
+| G G7 | C | G | G | A7 | D7 | G G7 | C | G | A7 D7 G / |
+""", "G", preset_slots("major"))
+# Bar for bar; both parts twice, the second time with the second ending, as played
+BIG_SCIOTA = parse_chart("""
+| G / | G / | G C | D7 G | G / | G / | G C | D7 G |
+| G D7 | D7 C | C Em | D7 G | G D7 | D7 C | C Em | D7 G |
+""", "G", preset_slots("major"))
+
 # Harmonic rhythm: 0 16 bars a chord, 0.25 8, 0.5 4, 0.75 2, 1 one bar.
 HARMONY = {
     "Drift": ("Major pentatonic, wandering, a chord every 8 bars", _h("major_pentatonic")),
@@ -104,6 +125,12 @@ HARMONY = {
     "Bluegrass": ("Major, I–IV–I–V | I–IV–V–I, a chord a bar, plain triads: a half cadence, then home",
                   _h("major", "Loop", 1.0, 0.0, [1, 4, 1, 5, 1, 4, 5, 1], plain=True)),
     "Phrygian drone": ("Phrygian, i and ♭II, eight bars each: techno", _h("phrygian", "Loop", 0.25, 0.3, [1, 2])),
+    "Red Wing": ("Major, Red Wing's chart in two (two of its bars to a bar): a verse and a chorus; the dominants as sevenths",
+                 _h("major", "Loop", 1.0, 0.0, RED_WING, plain=True)),
+    "Down Yonder": ("Major, Down Yonder's chart in two (two of its bars to a bar): G7 into C, A7 to D7",
+                    _h("major", "Loop", 1.0, 0.0, DOWN_YONDER, plain=True)),
+    "Big Sciota": ("Major, Big Sciota's chart: two parts of 4 bars, each twice; plain triads, the dominants as sevenths",
+                   _h("major", "Loop", 1.0, 0.0, BIG_SCIOTA, plain=True)),
 }
 
 MELODY = {
@@ -117,6 +144,19 @@ MELODY = {
     "Bluegrass break": ("Running two-bar phrases, new each time round: runs and chord outlines, chord tones on the beat",
                         _m("Phrases", 0.87, 0.45, phrase=0.3, variation=0.8, range=0.45, leaps=0.42, syncopation=0.35,
                            pickups=0.2)),
+    # Found by scoring settings against three dobro tunes (Red Wing, Down Yonder, Big Sciota), each
+    # over its own chart (2026-10-14, tools/tune_fit.py --search 150 --joint --style Phrases): notes a
+    # bar, where in the bar they fall and how far apart, steps against skips and leaps, the span,
+    # chord tones on beats 1 and 3; distance over 8 seeds (0: the tunes' own traits). Bar for bar:
+    # Red Wing 6.1, Down Yonder 7.0, Big Sciota 3.8 in its mood (Bluegrass break 13.3, 13.2, 7.9).
+    "Fiddle tune": ("A tune's melody at the tune's tempo: about six notes a bar, new each time, led into",
+                    _m("Phrases", 0.49, 0.2, phrase=0.32, variation=0.97, range=0.43, leaps=0.44, syncopation=0.09,
+                       pickups=1.0)),
+    # In two, two bars of a tune to a bar at half its tempo (--half): its eighths are the line's
+    # running sixteenths. In their moods Red Wing 4.1, Down Yonder 4.2 (Bluegrass break in two: 5.1 and 3.8).
+    "Fiddle tune in two": ("A tune's melody in two: running notes in phrases of eight of its bars, led into",
+                           _m("Phrases", 0.83, 0.26, phrase=0.65, variation=0.87, range=0.46, leaps=0.46,
+                              syncopation=0.33, pickups=0.8)),
     "Sparse": ("Scattered notes, few", _m(notes=0.2)),
     "Scattered": ("Scattered notes, wandering", _m(notes=0.35)),
     "Song": ("Phrases that ask and answer, mid-range",
@@ -143,6 +183,9 @@ BEAT = {
     "Folk": ("No drums: fingerpicked chords, the bass on 1 and 3", _b(0.45, bass="Root–fifth", chords="Travis", pump=0.0)),
     "Bluegrass": ("No drums: a bass walking into each chord, boom-chick guitar, a banjo roll, a touch of swing",
                   _b(0.65, bass="Walk-ups", chords="Boom-chick", pulse="Roll", swing=0.1, pump=0.0)),
+    "Bluegrass in two": ("No drums, for a tune laid in two (two of its bars to a bar): the bass on its downbeats, "
+                         "the chop on its 2 and 4, a banjo roll in its eighths",
+                         _b(0.05, bass="Walk-ups", chords="Offbeat", pulse="Roll", swing=0.1, pump=0.0)),
     "Country": ("A brushed train beat, a bass walking into each chord, boom-chick guitar",
                 _b(0.55, "Train", "Walk-ups", "Boom-chick", swing=0.05, pump=0.0)),
     "Lo-fi": ("Downtempo drums, swung, laid back", _b(0.33, "Downtempo", swing=0.55, pump=0.2)),
@@ -214,9 +257,9 @@ SOUND = {
     "Folk": ("Fingerpicked acoustic guitar, a soft upright bass, harmonica",
              _s(("Acoustic guitar", 0.35), ("Upright", 0.35), ("Harmonica", 1.0), drums=("Acoustic", 0.5),
                 space=0.4, echo=0.05, bright=0.5, drive=0.0)),
-    "Country band": ("Acoustic guitar, upright bass, a dobro lead, brushes on a kit",
-                     _s(("Acoustic guitar", 0.35), ("Upright", 0.4), ("Dobro", 1.0), drums=("Acoustic", 0.3),
-                        space=0.35, echo=0.1, bright=0.5, motion=0.15, drive=0.0)),
+    "Country band": ("Acoustic guitar, upright bass, a dobro lead, a banjo's rolls, brushes on a kit",
+                     _s(("Acoustic guitar", 0.35), ("Upright", 0.4), ("Dobro", 1.0), pulse=("Banjo", 0.4),
+                        drums=("Acoustic", 0.3), space=0.35, echo=0.1, bright=0.5, motion=0.15, drive=0.0)),
     "Chip": ("8-bit: square waves, a synth bass",
              _s(("Synth stab", 0.3), ("Synth", 0.5), ("Chip", 0.7), pulse=("Chip", 0.3), drums=("Electronic", 0.6),
                 space=0.25, echo=0.15, bright=0.7, motion=0.2, drive=0.2)),
@@ -268,6 +311,13 @@ WHOLE = {
                   "Bluegrass break", "Bluegrass", "String band", {}),
     "Folk song": ("Fingerpicked guitar, a harmonica line", "D", "Ballad", "Song", "Folk", "Folk", {}),
     "Country": ("A train beat on brushes, boom-chick guitar, a dobro", "G", "Bluegrass", "Song", "Country", "Country band", {}),
+    # The three dobro tunes: their charts, a dobro making up a tune over them, at their tempos
+    "Red Wing": ("Red Wing's chart in two at 100, a dobro making up a tune over it, a string band", "G", "Red Wing",
+                 "Fiddle tune in two", "Bluegrass in two", "Country band", {"shape": {"tempo": 0.0}}),
+    "Down Yonder": ("Down Yonder's chart in two at 120, a dobro making up a tune over it, a string band", "G",
+                    "Down Yonder", "Fiddle tune in two", "Bluegrass in two", "Country band", {"shape": {"tempo": 0.1}}),
+    "Big Sciota": ("Big Sciota's chart at 100, a dobro making up a tune over it, a string band", "G", "Big Sciota",
+                   "Fiddle tune", "Bluegrass", "Country band", {"shape": {"tempo": 0.5}}),
 }
 # What a preset can bring, toggle by toggle: the key, and each part's settings
 ASPECTS = {"key": ("Key", ["key"]), **{part: (name, paths) for part, (name, paths) in PARTS.items()}}

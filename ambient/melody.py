@@ -19,6 +19,8 @@ leads: a phrase that ends over the home chord is an answer, else a question.
 
 import random
 
+from . import music
+
 STYLES = {
     "Scattered": "single notes at random times, wandering",
     "Motif": "a one-bar figure repeated every bar like a riff, following the chords and slowly changing",
@@ -38,13 +40,20 @@ CELLS = {
     "syn": (8, [(0, 2), (2, 4), (6, 2)], True), "sync2": (8, [(2, 4), (6, 2)], True),
     "tttt": (4, [(i / 2, 0.5) for i in range(8)], False), "tts": (4, [(0, 0.5), (0.5, 0.5), (1, 1), (2, 1), (3, 1)], False),
     "stt": (4, [(0, 1), (1, 1), (2, 0.5), (2.5, 0.5), (3, 1)], False),
+    # A tune's figures where its eighths are the line's sixteenths (a fiddle tune laid in two, 2026-10-14):
+    # three after a held note, short-long-short, the dotted pairs; a beat of three dobro tunes in two
+    # was one of the first two in a fifth of its beats (tools/tune_fit.py)
+    "rsss": (4, [(1, 1), (2, 1), (3, 1)], True), "ses": (4, [(0, 1), (1, 2), (3, 1)], True),
+    "rse": (4, [(1, 1), (2, 2)], True), "rsyn": (4, [(1, 2), (3, 1)], True),
+    "edot": (4, [(0, 2), (2, 1.5), (3.5, 0.5)], False), "dotss": (4, [(0, 1.5), (1.5, 0.5), (2, 1), (3, 1)], False),
 }
 # How likely each cell is when the line is sparse, middling or busy (Notes)
 SPARSE = {"h": 3, "dq": 2, "q": 3, "r": 1.5, "qr": 1.2, "ee": 0.5, "syn": 0.5, "sync2": 0.5, "re": 0.4}
 MIDDLE = {"q": 3, "ee": 3, "dot": 1.5, "dq": 1.5, "h": 1, "ess": 1, "sse": 1, "r": 0.7, "syn": 1, "snap": 0.6, "re": 0.6}
 BUSY = {"ee": 3, "ssss": 2, "ess": 2, "sse": 2, "dot": 1.5, "snap": 1, "q": 1, "res": 0.8, "syn": 0.8}
 # ... and past busy: running sixteenths (a fiddle's unbroken eighths), then frenetic runs of thirty-seconds
-RUNNING = {"ssss": 8, "ess": 1, "sse": 1, "tts": 0.6, "stt": 0.6}
+RUNNING = {"ssss": 8, "ess": 1, "sse": 1, "tts": 0.6, "stt": 0.6, "rsss": 2, "ses": 2, "rse": 0.4, "rsyn": 0.4,
+           "edot": 0.6, "dotss": 0.6}
 FRENETIC = {"tttt": 4, "tts": 3, "stt": 3, "ssss": 1.5}
 
 FORMS = {
@@ -261,11 +270,41 @@ class Melodist:
                 parts[label] = {**a, "rhythm": rhythm, "steps": steps[:len(rhythm)]}
             elif label == "cad":  # the idea's head, then a long note on beat 3, held to the bar's end
                 x = busyness(s["shape"]["notes"])[1]  # a fast line runs on: more of the head, the long note later
-                at = 12 if x > 0.5 else 8
+                # or an eighth either side of it: the tunes arrive there too (Down Yonder's C on the and of 2,
+                # Big Sciota's G on the and of 3); a running line (a tune in two) anywhere in the bar's second
+                # half (its second bar), most often on its beat 3
+                if x > 0.5:
+                    at = self.rng.choices([8, 10, 11, 12], weights=[1, 1, 1, 3])[0]
+                else:
+                    at = 8 + self.rng.choices([-2, 0, 2], weights=[1, 3, 1])[0]
                 head = [(o, min(l, at - o)) for o, l in a["rhythm"] if o < at][:3 + int(12 * x)] or [(0, 4)]
                 rhythm = head + [(at, STEPS - at)]
                 parts[label] = {**a, "rhythm": rhythm, "steps": a["steps"][:len(rhythm) - 1] + [0]}
         return parts[label]
+
+    @staticmethod
+    def strong_cadence(chord_at, s: dict) -> int | None:
+        """Where the home chord comes, this bar, from V, to stay to the bar's end (a sixteenth, 0
+        if it came at the bar line from the bar before's V); None if it does not."""
+        home = music.KEYS.index(s["key"])
+        last = chord_at(15)
+        if not last or last[0] % 12 != home:
+            return None
+        start = 15
+        while start > 0 and (chord_at(start - 1) or [None])[0] is not None and chord_at(start - 1)[0] % 12 == home:
+            start -= 1
+        before = chord_at(start - 1)  # the bar before's last chord, at the bar line
+        return start if before and before[0] % 12 == (home + 7) % 12 else None
+
+    def _arrival(self, a: dict, at: int, s: dict) -> dict:
+        """A cadence bar arriving at `at`: the idea's first notes before it (as a cadence's head),
+        then the arrival, held to the bar's end."""
+        x = busyness(s["shape"]["notes"])[1]
+        head = [(o, min(l, at - o)) for o, l in a["rhythm"] if o < at][:3 + int(12 * x)]
+        if at and not head:
+            head = [(0, at)]
+        rhythm = head + [(at, STEPS - at)]
+        return {**a, "rhythm": rhythm, "steps": a["steps"][:len(rhythm) - 1] + [0]}
 
     def _contour(self, i: int, n: int, shape: str, peak: int) -> int:
         import math
@@ -276,12 +315,14 @@ class Melodist:
     # ---- a bar of notes, against the chord ----
 
     def plan_bar(self, bar: int, step0: int, s: dict, notes: list[int], chord_pcs,
-                 lead=None) -> None:
+                 lead=None, respell=None) -> None:
         """This bar's notes, from the phrase's form, sounding against the
         chords: `chord_pcs` is a chord (pitch classes, root first) or a
         function from a sixteenth in the bar to the chord sounding then. `lead`:
         the harmony's own cadence ('answer' over the home chord, else
-        'question') when the harmony leads; a function of the sixteenth too."""
+        'question') when the harmony leads; a function of the sixteenth too.
+        `respell(sixteenth, note)`: a note of `notes` (the scale under the bar's
+        first chord) as the scale is under the chord sounding then."""
         ph = self.phrase
         chord_at = chord_pcs if callable(chord_pcs) else (lambda onset: chord_pcs)
         lead_at = lead if callable(lead) else (lambda onset: lead)
@@ -293,6 +334,14 @@ class Melodist:
             return
         label = ph["form"][i]
         part = self._part(label, s)
+        # the end of a part: a phrase's last bar where the harmony goes from V to I (the end of a
+        # tune's A part, its B part): the line arrives on the home note when I comes, by step, and
+        # holds it (2026-10-15, the player: "resolve and breathe at the key points of form")
+        home_from = None
+        if mel["style"] == "Phrases" and i == len(ph["form"]) - 1:
+            home_from = self.strong_cadence(chord_at, s)
+            if home_from is not None:
+                part, label = self._arrival(self._part("a", s), home_from, s), "cad"
         if mel["style"] == "Motif" and i and rng.random() < 0.25 + 0.6 * mel["variation"]:
             part = self._vary(part, s, mel["variation"] * 0.5)  # the riff, a little different each time
         n_notes = len(notes)
@@ -311,6 +360,10 @@ class Melodist:
         target = mid + self._contour(i, len(ph["form"]), ph["contour"], 2 + int(3 * mel["range"]))
         anchor = min(tones, key=lambda k: abs(k - target)) if tones else target
         idx, resolve = anchor, None
+        # the bar may start on a neighbour of its chord tone, now and then (Big Sciota: 2 bars of 16)
+        lean = rng.random() < 0.03 + 0.1 * mel["variation"]
+        spell = respell or (lambda onset, note: note)
+        line = []  # (onset, note, length, velocity, strong)
         for j, ((onset, length), step) in enumerate(zip(part["rhythm"], part["steps"])):
             pcs, tones, roots = chord(int(onset))
             kind = (lead_at(int(onset)) or ph["kind"]) if ph["kind"] else None
@@ -326,22 +379,46 @@ class Melodist:
             strong = onset % 8 == 0 or length >= 4
             if cad and last and kind == "answer" and roots:
                 idx = min(roots, key=lambda k: abs(k - idx))
-            elif cad and last and tones:
-                others = [k for k in tones if k not in roots] or tones
+            elif cad and last and tones:  # a question: any chord tone but the home note (the root of IV or V too)
+                home = music.KEYS.index(s["key"])
+                others = [k for k in tones if notes[k] % 12 != home] or tones
                 idx = min(others, key=lambda k: abs(k - idx))
+            elif j == 0 and lean and len(part["rhythm"]) > 1:
+                # an appoggiatura on the bar's first note: a neighbour of the chord tone, resolving to it
+                # next (Big Sciota's G over D7, to F#)
+                near = [k for k in (idx + 1, idx - 1) if lo <= k <= hi and notes[k] % 12 not in pcs]
+                if near:
+                    idx, resolve = rng.choice(near), idx
             elif strong and tones and notes[idx] % 12 not in pcs:
                 near = min(tones, key=lambda k: abs(k - idx))
                 if abs(near - idx) == 1 and length >= 2 and rng.random() < 0.08 + 0.2 * mel["variation"]:
                     resolve = near  # an appoggiatura: keep the dissonance, resolve on the next note
                 else:
                     idx = near
-            vel = accent(onset, length)
-            self._put(step0 + onset, notes[idx], length, vel)
+            line.append([onset, spell(onset, notes[idx]), length, accent(onset, length), strong])
             self.prev_idx = idx
+        if home_from is not None and len(line) > 1:  # the note before the arrival: a step from it (2-1 or 7-1)
+            k_home = min(range(len(notes)), key=lambda k: abs(notes[k] - line[-1][1]))
+            near = [notes[k] for k in (k_home - 1, k_home + 1) if 0 <= k < len(notes)]
+            line[-2][1] = spell(line[-2][0], min(near, key=lambda n: abs(n - line[-2][1])))
+        # a weak note a whole step from the strong note after it may take the half step between: a
+        # chromatic approach (Down Yonder's D, E♭, E)
+        for a, b in zip(line, line[1:]):
+            if not a[4] and b[4] and abs(b[1] - a[1]) == 2 and rng.random() < 0.03 + 0.1 * mel["variation"]:
+                a[1] = (a[1] + b[1]) // 2
+        for onset, note, length, vel, _ in line:
+            self._put(step0 + onset, note, length, vel)
         # pickups: the last notes of a phrase's final bar lead into the next phrase
-        if i == len(ph["form"]) - 1 and rng.random() < mel["pickups"]:
+        # pickups lead into the next phrase; at the end of a part, seldom: the line breathes there
+        if i == len(ph["form"]) - 1 and rng.random() < mel["pickups"] * (0.25 if home_from is not None else 1):
             k = rng.choice([1, 2, 3])
-            onsets = {1: [14], 2: [12, 14], 3: [13, 14, 15]}[k]
+            running = busyness(s["shape"]["notes"])[1] > 0.5  # a running line leads in with sixteenths
+            if running:
+                onsets = {1: [15], 2: [14, 15], 3: [13, 14, 15]}[k]
+            else:
+                onsets = {1: [14], 2: rng.choice([[12, 14], [14, 15]]), 3: [13, 14, 15]}[k]
+            # now and then a run by half steps (Down Yonder's G, F#, F into E)
+            chromatic = k > 1 and rng.random() < 0.05 + 0.15 * mel["variation"]
             cut = step0 + onsets[0]
             for t0 in [t for t in self.plan if step0 <= t < cut]:  # shorten what would ring over them
                 self.plan[t0] = [(m, max(0.5, min(l, cut - t0 - f)), v, f) for m, l, v, f in self.plan[t0]]
@@ -350,9 +427,11 @@ class Melodist:
             # a run by step toward where the next phrase will start (near the middle of the range)
             start = mid + rng.choice([-2, -1, 1, 2])
             d = 1 if rng.random() < 0.5 else -1
+            first = notes[max(lo, min(hi, start - d * len(onsets)))]
             for q, o in enumerate(onsets):
                 pi = max(lo, min(hi, start - d * (len(onsets) - q)))
-                self._put(step0 + o, notes[pi], 1 if k == 3 else 2, 0.65)
+                note = first + d * q if chromatic else spell(o, notes[pi])
+                self._put(step0 + o, note, 1 if k == 3 or running or o == 15 else 2, 0.65)
 
     def _put(self, at: float, note: int, length: float, vel: float) -> None:
         """A note into the plan, at a sixteenth (or between two: a thirty-second)."""

@@ -221,7 +221,8 @@ def describe(state: dict, conductor=None, now_s: float | None = None) -> dict:
     slots = music.slots_of(state["tones"])
     names = music.spell(key, slots)
     tempo = bpm(sh["tempo"])
-    mel = music.scale_notes(key, slots, *melody_range(sh["height"])) or [60]
+    wide = state["melody"]["range"] if state["melody"]["style"] != "Scattered" else 0.5
+    mel = music.scale_notes(key, slots, *melody_range(sh["height"], wide)) or [60]
     b, m, s, e = sh["bright"], sh["motion"], sh["space"], sh["echo"]
     detune = 0.002 + 0.004 * m  # orc instr 11: kDet
     echo_t = 0.75 * 60 / tempo

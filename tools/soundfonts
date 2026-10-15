@@ -8,6 +8,14 @@
   few MB instead of 141.
 - sounds/dobro.sf2: the player's own dobro prototype, as it is (from
   ~/play/dobro-transcription/dobro-soundfont; not for publication).
+- sounds/generaluser.sf2: the steel-string guitar and the banjo, copied out
+  of GeneralUser GS v2.0.3 (S. Christian Collins; its licence: free use,
+  modification and redistribution; ~/.local/share/sounds/sf2/), the
+  banjo's looped attack saw left out. The player chose them over
+  FluidR3's, MuseScore's MS Basic and FlameStudios' Kay banjo (2026-10-15).
+- sounds/upright.sf2 is built by tools/upright_font.py (the player's own
+  upright bass, from the transcription project's takes); here it is only
+  normalised.
 
 Both are then normalised (normalise()) so the Pi's Csound reads them right:
 Debian's Csound 6.18.1 keeps a zone's root key and tuning in plain chars,
@@ -35,6 +43,9 @@ from ambient.samples import FONTS, SAMPLES  # noqa: E402
 FLUID = Path(sys.argv[1] if len(sys.argv) > 1 else "/usr/share/sounds/sf2/FluidR3_GM.sf2")
 DOBRO = Path(sys.argv[2] if len(sys.argv) > 2 else
              Path.home() / "play/dobro-transcription/dobro-soundfont/build/BeardDobroPrototype.sf2")
+GENERALUSER = Path(sys.argv[3] if len(sys.argv) > 3 else Path.home() / ".local/share/sounds/sf2/GeneralUser-GS.sf2")
+# GeneralUser's banjo adds a looped saw for its attack, which plays on under the note without the font's envelopes
+LEAVE_OUT = {b"Percussive Saw Wave"}
 OUT = HERE / "sounds"
 
 # record layouts in the pdta chunk (SoundFont 2.04, section 7)
@@ -69,10 +80,11 @@ def read(path: Path):
     return smpl, pdta
 
 
-def subset(smpl: bytes, p: dict, wanted: list[tuple[int, int]]):
+def subset(smpl: bytes, p: dict, wanted: list[tuple[int, int]], leave_out: set[bytes] = frozenset()):
     """The SoundFont with only these (bank, program) presets: their
     instruments and samples, re-indexed; each sample followed by 46 zero
-    points, as the format asks."""
+    points, as the format asks. A preset's zones playing an instrument named
+    in leave_out are left out."""
     out = {k: [] for k in REC}
     inst_map, sample_map, data = {}, {}, bytearray()
 
@@ -107,6 +119,9 @@ def subset(smpl: bytes, p: dict, wanted: list[tuple[int, int]]):
         name, prog, bnk, bag, lib, genre, morph = p["phdr"][k]
         out["phdr"].append((name, prog, bnk, len(out["pbag"]), lib, genre, morph))
         for b in range(bag, p["phdr"][k + 1][3]):
+            gens = p["pgen"][p["pbag"][b][0]:p["pbag"][b + 1][0]]
+            if any(oper == INSTRUMENT and p["inst"][amount][0].rstrip(b"\0") in leave_out for oper, amount in gens):
+                continue
             out["pbag"].append((len(out["pgen"]), len(out["pmod"])))
             out["pmod"].extend(p["pmod"][p["pbag"][b][1]:p["pbag"][b + 1][1]])
             for oper, amount in p["pgen"][p["pbag"][b][0]:p["pbag"][b + 1][0]]:
@@ -210,9 +225,19 @@ def main() -> None:
     write(OUT / FONTS["acoustic"], data, p, "ambient-room acoustic")
     print(f"{OUT / FONTS['acoustic']}: {len(wanted)} presets, {len(p['shdr']) - 1} samples, "
           f"{(OUT / FONTS['acoustic']).stat().st_size / 1e6:.1f} MB")
+    wanted = sorted({(s.bank, s.program) for s in SAMPLES.values() if s.font == "generaluser"})
+    if GENERALUSER.exists():
+        smpl, pdta = read(GENERALUSER)
+        data, p = subset(smpl, pdta, wanted, LEAVE_OUT)
+        write(OUT / FONTS["generaluser"], data, p, "ambient-room GeneralUser GS")
+        print(f"{OUT / FONTS['generaluser']}: {len(wanted)} presets, {len(p['shdr']) - 1} samples, "
+              f"{(OUT / FONTS['generaluser']).stat().st_size / 1e6:.1f} MB")
     shutil.copyfile(DOBRO, OUT / FONTS["dobro"])
     print(f"{OUT / FONTS['dobro']}: copied from {DOBRO}")
     for font in FONTS.values():
+        if not (OUT / font).exists():  # upright.sf2 comes from tools/upright_font.py
+            print(f"{OUT / font}: missing (its voices play their synthesized models)")
+            continue
         print(f"{OUT / font}: normalised for the Pi's Csound: {normalise(OUT / font)}")
 
 

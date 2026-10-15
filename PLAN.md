@@ -176,6 +176,108 @@ play with the ui to find something they like".
 - **The home page,** http://practice.local/ (in piano-recorder), shows
   both programs and links to each.
 
+### Real tunes as goals (2026-10-14)
+
+Three dobro tunes the player plays (Red Wing, Down Yonder, Big Sciota, in
+`~/play/dobro-transcription/tunes/dobro`) are the goals for three moods: each
+tune's chart, a dobro making up a melody over it, a string band.
+`tools/tune_fit.py` plays a chart through the conductor without sound and
+compares the melody it plans with the tune's: notes a bar, where they fall
+in the bar, how far apart, steps against skips and leaps, the span, chord
+tones on beats 1 and 3. 0 is the tune's own traits.
+
+- **The moods:** Red Wing and Down Yonder laid in two (two bars of the tune
+  to a bar, at half its tempo: the generator's running sixteenths are the
+  tune's eighths, the bass falls on its downbeats, the chop on its 2 and 4);
+  Big Sciota bar for bar (it has many sixteenths). New: the melodies
+  "Fiddle tune" and "Fiddle tune in two", the beat "Bluegrass in two",
+  three charts, three moods.
+- **The generator, changed for them** (`ambient/melody.py`,
+  `ambient/harmony.py`, `ambient/conductor.py`):
+  - rhythm cells a tune in two needs: three after a held note, short-long-
+    short (a fifth of the tunes' beats in two), two more syncopations, the
+    dotted pairs; in the running regime only;
+  - a cadence's held note on beat 3 or an eighth either side (in a running
+    line, anywhere in the bar's second half); pickups of two sixteenths too,
+    and in a running line in sixteenths; now and then by half steps;
+  - a phrase ending away from home on any chord tone but the home note (it
+    was: any but the chord's root; Down Yonder ends on C over C);
+  - a chord from outside the scale replaces only the note it alters (over A7
+    in G, C♯ for C; D stays: before, both neighbours of C♯ went);
+  - under a second chord in the bar, the bar's notes respelt as its scale
+    has them (G then G7: F for F♯);
+  - now and then a bar starts on a neighbour of its chord tone, resolving to
+    it (3-13% of bars, with Variation), and a weak note a whole step from
+    the strong note after it takes the half step between (3-13%);
+  - the register widens past the middle of Range, to 26 semitones (19
+    before; the tunes span 21 to 24).
+
+  On the other moods (10 seeds of 32 bars each): notes a bar within half a
+  note of before in most, up to 1.4 more in the riffs (Disco; one riff
+  stands for many bars, so the seeds spread wide); chord tones on beats 1
+  and 3 up to 0.07 fewer.
+- **Closest, over 8 seeds, in their moods:** Red Wing 4.1, Down Yonder 4.2,
+  Big Sciota 3.8. Before the generator changes, with the first presets:
+  5.0, 3.3, 4.0; Bluegrass break, the Bluegrass mood's melody: 13.3, 13.2
+  and 7.9 bar for bar.
+- **Could it play the tune itself?** Not whole. Bars within the rules, in
+  the moods: Red Wing 14 of 16 (in two; none before the changes), Down
+  Yonder 6 of 10 (in two; none before), Big Sciota 12 of 16 (10 before).
+  Bar for bar Red Wing 28 of 32 and Down Yonder 16 of 20. What stops the
+  rest: Down Yonder's chromatic runs across a bar line (G, F♯, F into the
+  next bar's E; D, E♭ into E: the generator plans a bar at a time and does
+  not know the next bar's first note), a note or two beyond the register,
+  and two of Red Wing's cadences.
+- **By chance:** in 200 times round each chart, no bar came out as the
+  tune plays it (0 of 2,000 to 3,200).
+
+### Acoustic voices from the player's own instruments (2026-10-15)
+
+The player: the Dobro voice "sounds very little like a dobro", and the bass
+"isn't very much like an acoustic bass". First steps (`sounds/README.md`):
+
+- **The dobro's samples speak on time:** each starts at its pick, found
+  from the 3-8 kHz click (in the dobro-soundfont build); they spoke 19-54 ms
+  late.
+- **The dobro plays by string,** as the MuseScore dobro spike found matters
+  most (`../dobro-transcription/docs/musescore-dobro-rendering-spike.md`):
+  each note on a string of open G, chosen near where the bar is; it rings
+  until the string is picked again, where before every note rang 1.4 s
+  whatever its string; a nearby note on the same string now and then slides
+  there without a new pick (0.08 s a semitone, arriving on the beat), and a
+  longer note is now and then picked a fret or two below and slid up.
+  Vibrato is not modelled (the player's held notes vary 1-2 cents). Its
+  choices have their own dice: the notes stay what the conductor planned.
+- **The Upright voice is the player's own bass** (`tools/upright_font.py`),
+  from the bass exercise takes, in place of FluidR3's.
+
+Then (2026-10-15, the player: the boom-chick guitar, the arpeggio, and a
+melody that does not "resolve and breathe at the key points of form"):
+
+- **A guitar plays guitar chords** (`music.guitar_shape`): open-position
+  shapes from standard tuning (G 320033, C x32010, D7 xx0212, A7 x02020),
+  where the patterns used the pad's voicing. Boom-chick: the root on its
+  string, the alternate bass a fifth below on the string under it (C-G,
+  D-A) or above (G-D), and the chick the strings above them strummed down
+  (7 ms a string) and damped short (0.16 s); the chop and stabs the same.
+  2 dB more in gain, to the old level.
+- **The rolls are a banjo's:** the Country band's rhythm part is the
+  sampled banjo, not the synthesized pluck, and a roll's notes are the
+  chord's from G3 to A4 with the thumb's drone on the home note near G4
+  (they were the pad's chord an octave up).
+- **The end of a part resolves** (`Melodist.strong_cadence`): a phrase's
+  last bar where the harmony goes from V to I (the end of the A part and of
+  the B part in the tune charts) arrives on the home note as I comes, from a
+  step away (2-1 or 7-1), and holds it; pickups there a quarter as often.
+  In the three tune moods, at those bars: on the home note as I comes
+  29-48% before, 99-100% after; held with nothing after it 0-8% before,
+  72-80% after; from a step away 6-16% before, 99-100% after.
+
+Next, if they help: a sampling session for the bass (every semitone E1 to
+D3, let ring 3-4 s, through the 18i8), as the dobro's planned 1.0 session;
+rolls between the dobro's melody notes (its open strings ringing under the
+tune).
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.

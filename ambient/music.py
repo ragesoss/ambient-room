@@ -370,6 +370,30 @@ def voice(pcs: list[int], center: float, prev: list[int] | None) -> list[int]:
     return sorted(set(out))
 
 
+GUITAR = (40, 45, 50, 55, 59, 64)  # a guitar in standard tuning, low E to high E
+
+
+def guitar_shape(pcs: list[int], max_fret: int = 4) -> list[int] | None:
+    """An open-position guitar chord for these pitch classes (root first), low to high: the root
+    on the lowest of the E, A and D strings that has it within `max_fret`, the strings below it
+    left out, and each string above at its lowest fret (0 to `max_fret`) on a chord tone. G: G2
+    B2 D3 G3 B3 G4; C: x32010; D7: xx0212; A7: x02020. None if no low string has the root."""
+    if not pcs:
+        return None
+    root, tones = pcs[0] % 12, {p % 12 for p in pcs}
+    for k, low in enumerate(GUITAR[:3]):
+        frets = [f for f in range(max_fret + 1) if (low + f) % 12 == root]
+        if not frets:
+            continue
+        shape = [low + frets[0]]
+        for string in GUITAR[k + 1:]:
+            fs = [f for f in range(max_fret + 1) if (string + f) % 12 in tones]
+            if fs:
+                shape.append(string + fs[0])
+        return shape
+    return None
+
+
 def bass_note(pc: int, lo: int = 36) -> int:
     """The pitch class in the octave from `lo` (C2, 65 Hz) up."""
     return lo + (pc - lo) % 12
