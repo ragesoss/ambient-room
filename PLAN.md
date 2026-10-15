@@ -273,10 +273,30 @@ melody that does not "resolve and breathe at the key points of form"):
   29-48% before, 99-100% after; held with nothing after it 0-8% before,
   72-80% after; from a step away 6-16% before, 99-100% after.
 
-Next, if they help: a sampling session for the bass (every semitone E1 to
-D3, let ring 3-4 s, through the 18i8), as the dobro's planned 1.0 session;
-rolls between the dobro's melody notes (its open strings ringing under the
-tune).
+Then the guitar and the banjo from GeneralUser GS (`sounds/README.md`):
+the player heard the same parts through FluidR3 (as the app plays it, and
+through FluidSynth with the font's own envelopes), MuseScore's MS Basic,
+GeneralUser GS and FlameStudios' Kay 5-string banjo, and found GeneralUser
+"slightly better for both", none of the guitars good: the samples are the
+limit. The app plays every font through Csound's `sfplay3m` without the
+font's envelopes (Debian's Csound has no FluidSynth opcodes); a sample's
+fade (`decay`) stands in for them.
+
+Next, if they help:
+- **Sampling sessions of the player's own instruments,** as for the dobro
+  and the bass: the bass (every semitone E1 to D3, let ring 3-4 s, through
+  the 18i8; the takes so far have no D#2, F2, G#2, A#2, B2, C#3 long
+  enough), and the player's guitar and banjo ("we'll get there
+  eventually"). For the guitar's boom-chick, single notes let ring and
+  palm-muted strums.
+- **Meanwhile, other free guitars** found but not tried: MDM Acoustic Guitar
+  on Pianobook (pick and finger, five dynamics, palm mutes; a free account
+  to download, Pianobook's terms) and FlameStudios' two GPL acoustics
+  (GigaStudio; their site needs a browser).
+- **Rolls between the dobro's melody notes** (its open strings ringing under
+  the tune).
+- **The CPU playing live on the LIVA:** offline, the tune moods take about
+  8% of one core there (2026-10-15).
 
 ## Steps
 
