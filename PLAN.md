@@ -124,8 +124,9 @@ play with the ui to find something they like".
       from the stereo players, and tuning read as unsigned chars (notes
       sharp, or a frozen synthesis). The voices play through the mono
       `sfplay3m`, and `tools/soundfonts` normalises the fonts. Details in
-      `sounds/README.md`. Reported upstream: csound/csound#3403, fix in
-      PR #3404. The sampled voices have been on the Pi since 2026-10-11.
+      `sounds/README.md`. Reported upstream: csound/csound#3403, fixed by
+      PR #3404 (merged 2026-10-12; in no release yet). The sampled
+      voices have been on the Pi since 2026-10-11.
   - Melody voices are evened out twice: scattered notes at -37 dBFS, and
     phrases and motifs at -30 dBFS (3 dB under the chords: a shaped line
     is there to be followed). Before, phrased voices spread over 13 dB.

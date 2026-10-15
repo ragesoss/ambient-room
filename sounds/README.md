@@ -76,9 +76,9 @@ the desktop (x86_64) does not show. Found and worked around 2026-10-11:
 - **Stereo players give NaN** (`sfplay`, `sfplay3`, `sflooper`) on the
   right channel for zones panned hard left, as FluidR3's stereo samples
   are. gcc's fast-math turns the pan law into a fused multiply-add that
-  comes out a hair below zero. Reported as csound/csound#3403; the fix is
-  PR #3404. Workaround: the voices play through the mono `sfplay3m`, and
-  we place them in the stereo field ourselves.
+  comes out a hair below zero. Reported as csound/csound#3403; fixed by
+  PR #3404 (merged 2026-10-12). Workaround: the voices play through the
+  mono `sfplay3m`, and we place them in the stereo field ourselves.
 - **Tuning fields read as unsigned chars.** A negative fine tune plays up
   to 2.56 semitones sharp. A zone with no root key reads past a table:
   NaN, or an endless loop that froze the synthesis (with the upright bass
@@ -86,6 +86,14 @@ the desktop (x86_64) does not show. Found and worked around 2026-10-11:
   release. Workaround: `tools/soundfonts` normalises every font (explicit
   root keys, no negative tuning). It sounds the same in any player.
 
-So a new font must go through `tools/soundfonts`, and the sampled voices
-stay on `sfplay3m`, until the Pi runs a Csound with both fixes.
+A third bug, in every build, leaves our fonts alone: `sfload` cuts an
+instrument global zone's pan, attenuation and scale tuning to 8 bits
+(csound/csound#3407, fixed by PR #3408, merged 2026-10-12). No global
+zone in our four fonts holds a value the cut changes
+(`../upstream/scan_global_zones.py`, 2026-10-15).
+
+No Csound release has #3404 or #3408 yet (7.0.0-beta.18, 2026-10-01, is
+the latest). So a new font must go through `tools/soundfonts` (and the
+scan), and the sampled voices stay on `sfplay3m`, until the Pi runs a
+Csound with these fixes.
 `../upstream/` holds the reports and patches.
