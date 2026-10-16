@@ -299,6 +299,32 @@ Next, if they help:
 - **The CPU playing live on the LIVA:** offline, the tune moods take about
   8% of one core there (2026-10-15).
 
+### Listening to the room (2026-10-16)
+
+The player, as dobro-transcription's band that follows was first being voiced over their takes:
+
+> that's what I'm thinking... the ambient project can be the basis for the band... we can extend that side of it to give the band some degrees of freedom to vary their parts and evolve over time within their tracking constraints and even have ambient mode "follow" by choosing evolution that points toward harmonizing and synchronization with live input.  this would be more like just taking input when available and responding to the environment rather than following like a band that needs to not let you get lost
+
+- **Two ways.** The band that follows (dobro-transcription, `docs/band-that-follows.md`): a chart,
+  the player's beat, and it must not let them get lost. Listening, here: the music goes on by
+  itself and, when someone plays, leans toward them.
+- **Where it fits.** Evolution already picks each change as the best of several random candidates,
+  the one nearest a target (energy, brightness), with more candidates for more pull
+  (`evolve.step_detailed`). Listening adds targets from what is heard:
+  - the key and chords: the scale's tones and the chord roots against the pitch classes heard;
+  - the tempo and the beat's phase: the conductor's grid against the player's beats (the follower's
+    `transcribe.livebeat` in dobro-transcription);
+  - how busy and how loud the playing is: energy.
+  With no one playing it wanders as now; the pull sets how much it listens.
+- **The band's parts get the same freedom:** their patterns vary and evolve over time, inside what
+  tracking needs (the chord, the beat, each part's place in the bar).
+- **Open: the inputs.** The recorders hold the capture while they record; the exercise app listens
+  between takes and lets go when asked (piano-recorder `docs/components.md`). A synth that listens
+  while it plays needs the capture too: the same hand-over, or ALSA's `dsnoop` (several programs
+  reading one capture), a decision for slot 2.
+- **First, offline,** as the band was built: evolution over a recorded take, choosing by its fit to
+  the take, against a free wander, as A/B renders of the same take.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.
