@@ -73,7 +73,7 @@ class Ring:
         if self.owner:
             self.header[:] = 0.0
             self.header[H_L] = np.nan
-            self.header[H_FILE_START] = -1
+            self.header[H_FILE_START] = np.nan  # no take yet
 
     @property
     def written(self) -> int:
@@ -165,6 +165,7 @@ class AlsaDuplex(Output):
         self.cap_period = self.cap_buffer = 0
         self.read_total = 0  # capture frames put in the ring, with the silence put back after overruns
         self.overruns = 0
+        self.inserted = 0  # frames of silence put back after overruns
         self.est = _Estimates(self.ring)
         self.lost_pending = False
         self.buf: np.ndarray | None = None
@@ -196,7 +197,7 @@ class AlsaDuplex(Output):
     def granted(self) -> dict:
         g = dict(self.play.granted())
         g.update({"capture_period": self.cap_period, "capture_buffer": self.cap_buffer,
-                  "capture_overruns": self.overruns, "inserted": int(self.ring.header[H_INSERTED])})
+                  "capture_overruns": self.overruns, "inserted": self.inserted})
         return g
 
     def _check(self, r: int, what: str) -> None:
@@ -289,6 +290,7 @@ class AlsaDuplex(Output):
                 self.ring.write(np.zeros((lost, 2), dtype=np.float32))
                 self.read_total += lost
                 h[H_INSERTED] += lost
+                self.inserted += lost
                 est += lost
             self.est.reset(h[H_L])
             self.lost_pending = False
@@ -373,8 +375,9 @@ class FileDuplex(Output):
     def _give(self, a: int, b: int) -> None:
         c = np.arange(a, b)
         block = np.zeros((b - a, 2), dtype=np.float32)
-        start = int(self.ring.header[H_FILE_START])
-        if start >= 0:
+        start = self.ring.header[H_FILE_START]
+        if not np.isnan(start):  # (before frame 0 too: the take's start already gone by)
+            start = int(start)
             i = c - start
             ok = (i >= 0) & (i < len(self.y))
             block[ok, 0] = self.y[i[ok]]
