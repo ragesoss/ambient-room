@@ -423,7 +423,8 @@ for fewer playback dropouts in T9), which may not grant a short period. Only wit
 go-ahead, with the recorders idle:
 
 1. Copy the branch beside the service, not over it (`tools/deploy` restarts the service):
-   `rsync -a --exclude .venv --exclude .git ./ practice:band-player/` from this tree, and
+   `rsync -aL --exclude .venv --exclude .git ./ practice:band-player/` from this tree (the fonts
+   with it), and
    `rsync -a --relative ~/play/dobro-transcription/./pipeline ~/play/dobro-transcription/./tunes/dobro/red-wing ~/play/dobro-transcription/./tunes/bass/down-yonder practice:dobro-transcription/`.
 2. There: `sudo apt install libfluidsynth3 fluidsynth`; `cd ~/band-player && /usr/bin/python3 -m venv
    --system-site-packages .venv && .venv/bin/pip install -r requirements-band.txt`.
