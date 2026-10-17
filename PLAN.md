@@ -426,7 +426,9 @@ go-ahead, with the recorders idle:
    `rsync -aL --exclude .venv --exclude .git ./ practice:band-player/` from this tree (the fonts
    with it), and
    `rsync -a --relative ~/play/dobro-transcription/./pipeline ~/play/dobro-transcription/./tunes/dobro/red-wing ~/play/dobro-transcription/./tunes/bass/down-yonder practice:dobro-transcription/`.
-2. There: `sudo apt install libfluidsynth3 fluidsynth`; `cd ~/band-player && /usr/bin/python3 -m venv
+2. There: `sudo apt install libfluidsynth3 fluidsynth`, then at once `systemctl --user mask --now
+   fluidsynth`: Debian's fluidsynth package enables a user service that starts with the next login and
+   holds the playback device (found 2026-10-17 on the LIVA, holding the 18i8's playback until masked); `cd ~/band-player && /usr/bin/python3 -m venv
    --system-site-packages .venv && .venv/bin/pip install -r requirements-band.txt`.
 3. CPU and margins, no sound: `.venv/bin/python tools/band_replay.py red-wing bass-dy --config
    config/pi.toml --transcribe ~/dobro-transcription --out ~/band-replay`. It reports the listening's
