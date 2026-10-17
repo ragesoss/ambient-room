@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run the Ugly Duckling String Band on the desktop with config/ud-desktop.toml, in the foreground: no device, a
+# recorded take as the input, nothing heard. The page at http://127.0.0.1:8004/.
+here=$(cd "$(dirname "$0")/.." && pwd)
+cd "$here" && UGLY_DUCKLING_CONFIG=config/ud-desktop.toml PYTHONPATH="$here" exec .venv/bin/python -m ugly_duckling.server

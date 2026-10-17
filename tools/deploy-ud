@@ -1,0 +1,20 @@
+#!/bin/sh
+# Copy the Ugly Duckling String Band to the control unit beside ambient-room (its own tree and venv, so neither
+# restarts the other), refresh the transcription project's copy there (its package and the tunes' charts and
+# tempos), and run the installer. Check first that the other apps are idle: a deploy restarts only this service,
+# but the copy and the install take the unit's CPU for a while.
+#   tools/deploy-ud [HOST]     HOST: an ssh host (default: practice)
+#   TRANSCRIBE=~/play/dobro-transcription (the default) is the transcription project here; on HOST it is
+#   ~/dobro-transcription.
+set -eu
+host=${1:-practice}
+here=$(cd "$(dirname "$0")/.." && pwd)
+tp=${TRANSCRIBE:-$HOME/play/dobro-transcription}
+rsync -aL --delete \
+    --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .git \
+    --exclude 'state-*.json' --exclude /renders --exclude /local \
+    "$here/" "$host:ugly-duckling/"
+rsync -a --delete --exclude __pycache__ "$tp/pipeline/src/" "$host:dobro-transcription/pipeline/src/"
+(cd "$tp" && find tunes -name chords.txt -o -name takes.csv) | \
+    rsync -a --files-from=- "$tp/" "$host:dobro-transcription/"
+ssh "$host" ugly-duckling/setup/install-ud.sh

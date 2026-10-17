@@ -1,0 +1,113 @@
+# The Ugly Duckling String Band on the practice control unit, installed once as /etc/ugly-duckling.toml by
+# setup/install-ud.sh; later edits there are kept.
+
+# The other apps on the control unit: before opening the 18i8 the band asks each to let go (ambient/peers.py).
+# 8000 the practice recorder, 8001 the ambient synth, 8002 the exercise app, 8003 the chord app.
+peers = ["http://127.0.0.1:8000", "http://127.0.0.1:8001", "http://127.0.0.1:8002", "http://127.0.0.1:8003"]
+
+[web]
+host = "0.0.0.0"
+port = 8004
+
+[band]
+# The transcription project's copy here: its package (the listening, the deciding, the voicing) and its tunes.
+transcribe = "~/dobro-transcription/pipeline/src"
+tunes = "~/dobro-transcription/tunes"
+sounds = "sounds"
+lead_s = 0.05
+in_block = 256
+volume_db = 0.0
+min_volume_db = -24.0
+# The cap: at +12 dB the band plays at about -21 dBFS gated rms, the level takes play at (piano-recorder's
+# "Shared mixer"); every sample is clipped at ceiling_db whatever the volume.
+max_volume_db = 12.0
+ceiling_db = -1.0
+click_db = -18.0
+idle_minutes = 10
+
+[device]
+# piano-recorder's slots 2 and 3: the Scarlett 18i8 3rd Gen (its facts in that project's docs/components.md and
+# hardware/scarlett-18i8-gen3.toml). The band to PCM 1-2 (plughw: 16-bit stereo; its mixer sends them to the
+# speakers); all 20 capture channels from hw. Capture channels 10-11 (PCM 11-12) return the playback digitally.
+kind = "alsa"
+playback = "plughw:CARD=USB,DEV=0"
+capture = "hw:CARD=USB,DEV=0"
+card = "USB"
+channels = 20
+loopback = [10, 11]
+# The band player's profile, measured on this unit (ambient-room PLAN.md, "The band player"): block 128, a 16 ms
+# buffer in periods of 128 frames. The capture takes the same period and buffer.
+block = 128
+buffer_ms = 16.0
+period_ms = 2.67
+# The converters out and in, not seen by the digital loopback: an estimate, not measured.
+converter_ms = 1.0
+# Phantom power for the condensers on inputs 3-4 (it comes back off after a power cut; the recorders set it too).
+controls = [{ name = "Line In 3-4 Phantom Power Capture Switch", set = "on" }]
+
+# The inputs the page offers: capture channels are the 18i8's input numbers less one (as wired 2026-10-17,
+# piano-recorder config/exercises.toml).
+[[inputs]]
+id = "room"
+name = "Room mic"
+channels = [3]
+instrument = "guitar"
+note = "Hears the band from the speakers too: keep the band low, or use a pickup."
+
+[[inputs]]
+id = "nadine"
+name = "Nadine (bass)"
+channels = [2]
+instrument = "bass"
+
+[[inputs]]
+id = "piezo"
+name = "Piezo (bass)"
+channels = [6]
+instrument = "bass"
+
+[voice]
+# Vosk's small English model: "I count it in", and "stop". Empty, or missing: not offered.
+model = "~/models/vosk-model-small-en-us-0.15"
+
+# The tunes, from the transcription project's tune folders (ugly_duckling/tunes.py): one pass of each form.
+[[tunes]]
+id = "red-wing"
+name = "Red Wing"
+folder = "dobro/red-wing"
+bars = "1-16"          # the file has the form twice
+
+[[tunes]]
+id = "down-yonder"
+name = "Down Yonder"
+folder = "dobro/down-yonder"
+
+[[tunes]]
+id = "big-sciota"
+name = "Big Sciota"
+folder = "dobro/big-sciota"
+bars = [1, 2, 3, 4, 1, 2, 3, 5, 6, 7, 8, 9, 6, 7, 8, 10]   # both parts repeat; bars 5 and 10 the second endings
+
+[[tunes]]
+id = "cherokee-shuffle"
+name = "Cherokee Shuffle"
+folder = "dobro/cherokee-shuffle"
+form = ["A", "A", "B", "B"]
+
+[[tunes]]
+id = "saint-annes-reel"
+name = "Saint Anne's Reel"
+folder = "dobro/saint-annes-reel"
+form = ["A", "A", "B", "B"]
+
+[[tunes]]
+id = "tennessee-waltz"
+name = "Tennessee Waltz"
+folder = "dobro/tennessee-waltz"
+
+[[tunes]]
+id = "g-c-g-d"
+name = "G C G D (the free guitar take)"
+folder = "guitar/free-2026-10-17"
+bars = "1-16"          # the form; the take's later bars have its own accidents
+
