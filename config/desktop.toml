@@ -15,3 +15,11 @@ port = 8001
 
 [state]
 file = "state-desktop.json"
+
+[band]
+# The band player (ambient/bandplayer.py). On the desktop it plays nothing aloud: the paced output keeps what a
+# sound card would have played (tools/band_replay.py). To hear it here, output = "alsa" and a device.
+transcribe = "~/play/dobro-transcription/pipeline/src"
+output = "paced"
+block = 128
+buffer_ms = 10.67
