@@ -27,7 +27,8 @@ def create_app(cfg: Config) -> FastAPI:
     async def lifespan(app):
         samples.orchestra(cfg.sounds_dir)  # which sampled voices have their fonts: the page says so from the start
         engine = (FakeEngine() if cfg.engine == "fake"
-                  else Engine(cfg.device, cfg.buffer_ms, cfg.gain_db, cfg.sounds_dir))
+                  else Engine(cfg.device, cfg.buffer_ms, cfg.gain_db, cfg.sounds_dir, cfg.block, cfg.output,
+                              cfg.period_ms))
         holder["room"] = Room(engine, cfg.state_file, cfg.peers)
         yield
         holder["room"].close()

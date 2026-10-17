@@ -1,18 +1,23 @@
-"""The sound engine: Csound, computing audio that aplay plays.
+"""The sound engine: Csound, computing audio that an output plays (`ambient/output.py`).
 
-Csound's own ALSA output ignores the buffer size on the Pi (it always takes
-1024 frames, 21 ms), so Csound hands its audio to this module and aplay
-plays it, with the buffer the config asks for. All Csound calls happen in
-one thread; other threads queue notes and control changes.
+Csound's own ALSA output ignores the buffer size: it always takes 1024
+frames, 21 ms (on the Pi, 2026-10-11; on the desktop's ALSA null device for
+every -B from 256 to 4096, Csound 6.18, 2026-10-16). So Csound hands its
+audio to this module, which gives it to the output the config names: aplay
+(the default, with the buffer asked for) or alsa (straight to the device,
+for a short buffer). The block (frames Csound computes at a time, a multiple
+of the orchestra's 128) is the config's too. All Csound calls happen in one
+thread; other threads queue notes and control changes.
 """
 
 import queue
-import subprocess
 import threading
 import time
 from pathlib import Path
 
 import numpy as np
+
+from .output import OutputError, make_output
 
 ORC = Path(__file__).parent / "orc" / "ambient.orc"
 
@@ -30,7 +35,7 @@ def orchestra(sounds_dir: Path | None = None) -> str:
     from . import samples
     return ORC.read_text() + "\n" + samples.orchestra(sounds_dir)
 RATE = 48000
-BLOCK = 1024  # frames per Csound buffer
+BLOCK = 1024  # frames per Csound buffer, unless the config says otherwise
 
 
 class EngineError(Exception):
@@ -38,13 +43,20 @@ class EngineError(Exception):
 
 
 class Engine:
-    """Csound into aplay. start() opens the device; stop() releases it."""
+    """Csound into an output. start() opens the device; stop() releases it."""
 
-    def __init__(self, device: str, buffer_ms: int, gain_db: float, sounds_dir: Path | None = None):
+    def __init__(self, device: str, buffer_ms: int, gain_db: float, sounds_dir: Path | None = None,
+                 block: int = BLOCK, output: str = "aplay", period_ms: float | None = None):
         self.sounds_dir = sounds_dir  # the sampled voices' SoundFonts
         self.device = device
         self.buffer_ms = buffer_ms
         self.gain_db = gain_db
+        if block % 128:
+            raise EngineError(f"the block ({block} frames) must be a multiple of the orchestra's 128")
+        self.block = block
+        self.output = output
+        self.period_ms = period_ms
+        self.out = None
         self.q: queue.Queue = queue.Queue()
         self.thread: threading.Thread | None = None
         self.stop_flag = threading.Event()
@@ -62,9 +74,10 @@ class Engine:
         return self.now
 
     def latency(self) -> float:
-        """How far the score runs ahead of what is heard: aplay's buffer,
-        the 16 KB pipe (85 ms), and a Csound block (21 ms)."""
-        return self.buffer_ms / 1000 + 0.085 + BLOCK / RATE
+        """How far the score runs ahead of what is heard: the output's buffer
+        (with aplay, its 16 KB pipe too: 85 ms) and a Csound block."""
+        out = self.out or make_output(self.output, self.device, RATE, self.buffer_ms, self.period_ms)
+        return out.latency() + self.block / RATE
 
     def set(self, name: str, value: float) -> None:
         self.channels[name] = value
@@ -94,8 +107,8 @@ class Engine:
         self.stop_flag.clear()
         init_csound(ctcsound)
         cs = ctcsound.Csound()
-        cs.setHostImplementedAudioIO(1, BLOCK)
-        for o in ("-d", "-m0", "-odac", "-+rtaudio=null", f"-b{BLOCK}", f"-B{BLOCK * 2}"):
+        cs.setHostImplementedAudioIO(1, self.block)
+        for o in ("-d", "-m0", "-odac", "-+rtaudio=null", f"-b{self.block}", f"-B{self.block * 2}"):
             cs.setOption(o)
         cs.createMessageBuffer(False)
         if cs.compileOrc(orchestra(self.sounds_dir)) != 0:
@@ -103,21 +116,17 @@ class Engine:
         cs.readScore("f 0 z\n")
         if cs.start() != 0:
             raise EngineError("Csound did not start:\n" + self._messages(cs))
-        aplay = subprocess.Popen(
-            ["aplay", "-D", self.device, "-f", "S16_LE", "-r", str(RATE), "-c", "2",
-             f"--buffer-time={self.buffer_ms * 1000}", "-t", "raw", "-"],
-            stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        time.sleep(0.3)
-        if aplay.poll() is not None:
-            err = aplay.stderr.read().decode(errors="replace").strip()
+        try:
+            out = make_output(self.output, self.device, RATE, self.buffer_ms, self.period_ms)
+            out.open()
+        except OutputError as e:
             cs.cleanup()
-            raise EngineError(f"could not open {self.device}: {err}")
-        self._shrink_pipe(aplay.stdin)
+            raise EngineError(str(e))
+        self.out = out
         cs.setControlChannel("gain_db", self.gain_db)
         for k, v in self.channels.items():
             cs.setControlChannel(k, v)
-        threading.Thread(target=self._read_stderr, args=(aplay,), daemon=True).start()
-        self.thread = threading.Thread(target=self._run, args=(cs, aplay), daemon=True)
+        self.thread = threading.Thread(target=self._run, args=(cs, out), daemon=True)
         self.thread.start()
 
     def stop(self) -> None:
@@ -127,36 +136,29 @@ class Engine:
             self.thread.join(timeout=5)
         self.thread = None
 
-    def _run(self, cs, aplay) -> None:
+    def _run(self, cs, out) -> None:
         try:
             while not self.stop_flag.is_set():
                 self._drain(cs)
                 if cs.performBuffer() != 0:
                     break
                 self.now = cs.scoreTime()
-                out = cs.outputBuffer()
-                if not np.all(np.isfinite(out)):  # never noise to the speakers; say so on the page
+                frames = cs.outputBuffer()
+                if not np.all(np.isfinite(frames)):  # never noise to the speakers; say so on the page
                     self.invalid += 1
                     self.error = ("the synthesis gave invalid audio (NaN) and was silenced; "
                                   "Stop and Play starts it again")
-                    out = np.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
-                pcm = np.clip(out * 32767.0, -32768, 32767).astype("<i2")
+                    frames = np.nan_to_num(frames, nan=0.0, posinf=0.0, neginf=0.0)
                 try:
-                    aplay.stdin.write(pcm.tobytes())
-                except (BrokenPipeError, ValueError):
+                    out.write(frames.reshape(-1, 2))
+                except OutputError:
                     self.error = "the playback device went away"
                     break
+                self.underruns = out.underruns
         except Exception as e:  # keep the reason for the status
             self.error = f"engine stopped: {e}"
         finally:
-            try:
-                aplay.stdin.close()
-            except OSError:
-                pass
-            try:
-                aplay.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                aplay.kill()
+            out.close()
             cs.cleanup()
 
     def _drain(self, cs) -> None:
@@ -171,20 +173,6 @@ class Engine:
                 _, at, p = item
                 p[1] = max(0.0, at - cs.scoreTime())
                 cs.scoreEvent("i", p)
-
-    def _read_stderr(self, aplay) -> None:
-        for line in aplay.stderr:
-            if b"underrun" in line:
-                self.underruns += 1
-
-    @staticmethod
-    def _shrink_pipe(f) -> None:
-        """A 16 KB pipe (85 ms of audio), so control changes land sooner."""
-        try:
-            import fcntl
-            fcntl.fcntl(f.fileno(), 1031, 16384)  # F_SETPIPE_SZ
-        except OSError:
-            pass
 
     @staticmethod
     def _messages(cs) -> str:

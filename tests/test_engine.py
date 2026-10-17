@@ -36,3 +36,30 @@ def test_a_restart_starts_the_clock_at_zero():
         assert e.time() < 0.5
     finally:
         e.stop()
+
+
+def alsa_null() -> bool:
+    from ambient.output import AlsaOutput
+    try:
+        out = AlsaOutput("null", 48000, 128, 3)
+        out.open()
+        out.close()
+        return True
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not alsa_null(), reason="no alsa-lib or ALSA null device")
+def test_the_engine_plays_in_short_blocks_straight_to_alsa():
+    # the band's profile: Csound's block and the output from the config, no aplay and no pipe
+    e = Engine("null", 8, 0.0, block=128, output="alsa", period_ms=2.0)
+    assert e.latency() == pytest.approx(0.008 + 128 / 48000, abs=0.001)
+    e.start()
+    try:
+        t0 = time.monotonic()
+        while e.time() < 0.5 and time.monotonic() - t0 < 5:
+            time.sleep(0.05)
+        assert e.time() >= 0.5 and e.error is None
+        assert e.out.granted()["period"] > 0
+    finally:
+        e.stop()
