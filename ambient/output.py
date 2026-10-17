@@ -10,7 +10,9 @@ underruns. The config picks one (`[output] kind`, `[band] kind`):
 - `paced`: no device. The frames are consumed at the pace of a device clock (the monotonic clock) from a buffer of
   the size asked for, and kept (`capture`): a replay hears what a sound card would have played, when it would
   have played it, and nothing is heard. A block that comes after the buffer ran dry is an underrun; the silence a
-  device would have played is put in the capture, so its frame n is always the device's frame n.
+  device would have played is put in the capture, so its frame n is always the device's frame n. The capture is
+  written by a thread of its own: a write to a file can wait on the disk (on the practice unit, 33-72 ms while the
+  kernel writes the file's dirty pages back, about every 30 s of capture), and the engine's loop must not.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import errno
+import queue
 import subprocess
 import threading
 import time
@@ -296,6 +299,8 @@ class PacedOutput(Output):
         self.responses: list[float] = []
         self._room_at: float | None = None
         self._wav = None
+        self._q: queue.SimpleQueue | None = None  # the capture's 16-bit frames, for its writer thread
+        self._writer: threading.Thread | None = None
         self._pending: list[np.ndarray] = []  # frames written before the start
 
     def open(self) -> None:
@@ -304,6 +309,13 @@ class PacedOutput(Output):
             self._wav.setnchannels(2)
             self._wav.setsampwidth(2)
             self._wav.setframerate(self.rate)
+            self._q = queue.SimpleQueue()
+            self._writer = threading.Thread(target=self._write_capture, daemon=True, name="capture-writer")
+            self._writer.start()
+
+    def _write_capture(self) -> None:
+        while (data := self._q.get()) is not None:
+            self._wav.writeframes(data)
 
     def played(self, now: float | None = None) -> float:
         """Frames the device has played by `now` (fractional)."""
@@ -348,8 +360,8 @@ class PacedOutput(Output):
         return gap
 
     def _keep(self, frames: np.ndarray) -> None:
-        if self._wav is not None:
-            self._wav.writeframes(to_s16(frames))
+        if self._q is not None:
+            self._q.put(to_s16(frames))
 
     def ahead(self) -> float | None:
         if self.started_at is None:
@@ -367,6 +379,10 @@ class PacedOutput(Output):
                                 "n": len(self.responses)}}
 
     def close(self) -> None:
+        if self._writer is not None:
+            self._q.put(None)
+            self._writer.join()
+            self._writer, self._q = None, None
         if self._wav is not None:
             self._wav.close()
             self._wav = None
