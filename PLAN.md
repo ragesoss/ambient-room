@@ -417,6 +417,17 @@ priority: the user's `rtprio` limit is 0):
   default (`clock.quantum`, minimum 32). Not measured: nothing plays aloud here.
 - So the band's profile: block 128, buffer 10.67 ms (`[band]`), and the engine in its own process.
 
+**The replay's underruns on `practice` were its capture file (2026-10-17).** About one a take at a 16 ms
+buffer, the engine's response up to 37-72 ms: every one (14 in 6 replays of the two takes) was the engine
+writing a block of the capture WAV and waiting 33-72 ms while the kernel wrote that file's dirty pages back
+(the last 30 s of it, so they came about 30 s apart: 28-35 and 59-71 s into Red Wing, 27-33 s into Down
+Yonder). The listening's worst block was 13-20 ms throughout, and live there is no capture file. Now
+`PacedOutput` hands the capture to a thread of its own. On `practice`, both takes: before, 1-2 underruns a
+take at 16 ms (5 replays) and at 10.7 ms (2), the response max 37-72 ms; after (2 replays at each), none at
+16 ms or 10.7 ms, the response at most 1.4-3.8 ms, the listening's worst block 13.0-14.5 ms, no cue late or dropped,
+every note the offline render's. The transcription project's findings, "The band as the audio comes", has
+the measurements.
+
 **On the practice device (the LIVA), not touched yet.** Celeron N2807, 2 cores; about 11 times slower
 than the desktop on the piano detector. Its USB audio driver runs with `lowlatency=0` (piano-recorder,
 for fewer playback dropouts in T9), which may not grant a short period. Only with the player's
