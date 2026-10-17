@@ -28,3 +28,14 @@ port = 8001
 [state]
 # The last settings, kept across restarts.
 file = "~/.local/share/ambient-room/state.json"
+
+[band]
+# The band player (ambient/bandplayer.py) on the 18i8, through alsa-lib with a short buffer. Not measured on
+# this unit yet (PLAN.md, "The band player"): the block, buffer and period are the desktop's, to be checked here
+# with tools/band_replay.py --output alsa, with the player's go-ahead. The transcription project's copy here:
+transcribe = "~/dobro-transcription/pipeline/src"
+output = "alsa"
+device = "plughw:CARD=USB,DEV=0"
+block = 128
+buffer_ms = 16.0
+period_ms = 2.67

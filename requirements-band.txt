@@ -1,0 +1,7 @@
+# The band player's replays (tools/band_replay.py) and, later, the live band: the transcription project's
+# package (its path in the config's [band] transcribe) needs these, in the venv made with
+# --system-site-packages. FluidSynth is Debian's: sudo apt install libfluidsynth3 (and fluidsynth, the program
+# the offline render uses).
+-r requirements.txt
+librosa==0.11.0
+soundfile
