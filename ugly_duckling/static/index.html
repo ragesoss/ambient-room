@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ugly Duckling String Band</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<meta name="theme-color" content="#121016">
+<style>
+/* The music room's look (piano-recorder's exercise app and home page): dark, purple for what to tap. */
+@font-face { font-family: "Bricolage Grotesque"; src: url(/fonts/bricolage-grotesque.woff2) format("woff2");
+  font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "Public Sans"; src: url(/fonts/public-sans.woff2) format("woff2");
+  font-weight: 100 900; font-display: swap; }
+:root {
+  color-scheme: dark;
+  --bg: #121016; --surf2: #1E1A24; --surf: #28232F; --line: #3E3748; --line-soft: #2F2A37; --dash: #514960;
+  --ink: #F2EEF8; --ink2: #CEC7DA; --ink3: #A79FB4; --faint: #7E768B;
+  --purple-fill: #7C3AED; --purple: #8B5CF6; --purple-ink: #B9A0FF; --purple-tint: #33264F;
+  --red-ink: #FF8F85; --red-tint: #3E1F24; --green: #4ADE80; --amber: #F5B84B;
+  --display: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --text: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.4 var(--text); -webkit-tap-highlight-color: transparent; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .5; }
+h1, h2, p { margin: 0; }
+main { max-width: 640px; margin: 0 auto;
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 2px 12px; }
+.top a { color: var(--ink3); text-decoration: none; font-size: 15px; white-space: nowrap; }
+h1 { font-family: var(--display); font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: 0 2px 16px; }
+.card { background: var(--surf); border: 1.5px solid var(--line); border-radius: 22px; padding: 16px; margin-bottom: 12px; }
+h2 { font-family: var(--display); font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+.hint { color: var(--ink3); font-size: 15px; margin-top: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 44px; padding: 8px 14px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surf2); text-align: left; }
+.chip small { display: block; color: var(--ink3); font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--purple-tint); border-color: var(--purple); }
+.row { display: flex; align-items: center; gap: 12px; }
+.row + .row { margin-top: 10px; }
+.grow { flex: 1; min-width: 0; }
+input[type=range] { width: 100%; accent-color: var(--purple-fill); height: 32px; }
+.num { min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink2); }
+.step { width: 44px; height: 44px; flex: none; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surf2); font-size: 22px; line-height: 1; }
+.big { width: 100%; min-height: 64px; border: 0; border-radius: 20px; background: var(--purple-fill); color: #fff;
+  font-family: var(--display); font-size: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.big.stop { background: var(--surf2); border: 1.5px solid var(--purple); color: var(--ink); }
+.msg { margin: 0 2px 12px; padding: 12px 14px; border-radius: 16px; background: var(--surf2); color: var(--ink2); font-size: 15px; }
+.msg.err { background: var(--red-tint); color: var(--red-ink); }
+.state { font-family: var(--display); font-size: 22px; font-weight: 700; }
+.sub { color: var(--ink3); font-size: 15px; }
+.chord { font-family: var(--display); font-size: 84px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; margin: 8px 0 4px; min-height: 84px; }
+.dots { display: flex; gap: 10px; margin: 10px 0 4px; }
+.dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--dash); }
+.dot.on { background: var(--purple-fill); border-color: var(--purple-fill); }
+.dot.one.on { background: var(--purple-ink); border-color: var(--purple-ink); }
+.part { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.part:first-child { border-top: 0; }
+.part .name { flex: 1; font-weight: 600; }
+.part .what { color: var(--ink3); font-size: 14px; }
+.led { width: 12px; height: 12px; border-radius: 50%; background: transparent; border: 2px solid var(--faint); flex: none; }
+.led.go { background: var(--green); border-color: var(--green); }
+.toggle { min-width: 64px; min-height: 40px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surf2); }
+.toggle[aria-pressed="true"] { background: var(--purple-tint); border-color: var(--purple); }
+.meter { height: 10px; border-radius: 5px; background: var(--surf2); overflow: hidden; }
+.meter > div { height: 100%; width: 0; background: var(--green); transition: width .15s; }
+.meter > div.hot { background: var(--amber); }
+details { color: var(--ink3); font-size: 14px; margin-top: 4px; }
+details summary { cursor: pointer; padding: 6px 2px; }
+details pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; font-size: 13px; }
+select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surf2); padding: 8px 12px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><a id="home" href="/">&larr; Music room</a><span class="sub" id="dev"></span></div>
+  <h1>Ugly Duckling String Band</h1>
+  <p class="msg" id="msg" hidden></p>
+
+  <!-- the band playing -->
+  <section id="live" hidden>
+    <div class="card">
+      <div class="state" id="lstate">Starting</div>
+      <div class="sub" id="ltune"></div>
+      <div class="dots" id="dots"></div>
+      <div class="chord" id="chord"></div>
+      <div class="sub" id="cwhy"></div>
+    </div>
+    <div class="card">
+      <h2>The band</h2>
+      <div id="lparts"></div>
+    </div>
+    <div class="card">
+      <div class="row"><span class="grow">Band volume</span><span class="num" id="lvoln"></span></div>
+      <input type="range" id="lvol" step="1">
+      <div class="row"><span class="grow sub">Your input</span><span class="num sub" id="lvln"></span></div>
+      <div class="meter"><div id="lvl"></div></div>
+    </div>
+    <button class="big stop" id="stop" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"></rect></svg>Stop</button>
+    <details><summary>Timing details</summary><pre id="timing"></pre></details>
+  </section>
+
+  <!-- choosing -->
+  <section id="setup">
+    <div class="card">
+      <h2>Tune</h2>
+      <div class="chips" id="tunes"></div>
+      <div class="hint" id="tunehint"></div>
+    </div>
+    <div class="card">
+      <h2>Tempo</h2>
+      <div class="row">
+        <button class="step" type="button" id="slower" aria-label="Slower">&minus;</button>
+        <input class="grow" type="range" id="bpm" min="50" max="220" step="1">
+        <button class="step" type="button" id="faster" aria-label="Faster">+</button>
+        <span class="num" id="bpmn"></span>
+      </div>
+      <div class="hint" id="bpmhint"></div>
+    </div>
+    <div class="card">
+      <h2>Count-in</h2>
+      <div class="chips" id="counts">
+        <button class="chip" type="button" data-count="band">Band clicks a bar<small>then plays on the next 1</small></button>
+        <button class="chip" type="button" data-count="voice">I count it in<small>say "one, two, three, four"</small></button>
+      </div>
+      <div class="hint" id="counthint"></div>
+      <div class="row" id="stoprow"><span class="grow">Saying "stop" stops the band</span><button class="toggle" type="button" id="liststop" aria-pressed="true">On</button></div>
+    </div>
+    <div class="card">
+      <h2>Your input</h2>
+      <div class="chips" id="inputs"></div>
+      <div class="hint" id="inputhint"></div>
+      <h2 style="margin-top:14px">You are playing</h2>
+      <div class="chips" id="instruments"></div>
+    </div>
+    <div class="card">
+      <h2>Who plays</h2>
+      <div class="chips" id="parts"></div>
+      <div class="row" style="margin-top:14px"><span class="grow">Band volume</span><span class="num" id="voln"></span></div>
+      <input type="range" id="vol" step="1">
+      <div class="hint">The loudest it goes is the level takes play at.</div>
+    </div>
+    <button class="big" id="start" type="button"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"></path></svg>Start</button>
+    <p class="hint" style="margin-top:12px">Nothing plays until you press Start. Starting stops the other apps' playback; it will not start during a recording.</p>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const KEY = "ud-settings";
+let opts = null, st = null, pollTimer = null;
+let pick = { tune: null, bpm: {}, input: null, instrument: null, count: "band", parts: {bass: true, chop: true, comp: true}, volume_db: 0, listen_stop: true };
+try { Object.assign(pick, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(pick)); } catch (e) {} }
+
+$("home").href = `http://${location.hostname}/`;
+
+function show(text, err) { const m = $("msg"); m.hidden = !text; m.textContent = text || ""; m.className = "msg" + (err ? " err" : ""); }
+function chip(label, small, pressed, onclick) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.setAttribute("aria-pressed", pressed ? "true" : "false");
+  b.textContent = label;
+  if (small) { const s = document.createElement("small"); s.textContent = small; b.append(s); }
+  b.onclick = onclick; return b;
+}
+function tune() { return opts.tunes.find(t => t.id === pick.tune) || opts.tunes[0]; }
+function input() { return opts.inputs.find(i => i.id === pick.input) || opts.inputs[0]; }
+function fmtDb(v) { return (v > 0 ? "+" : "") + Math.round(v) + " dB"; }
+
+function renderSetup() {
+  const t = tune(), inp = input();
+  pick.tune = t.id; pick.input = inp && inp.id;
+  const tb = $("tunes"); tb.innerHTML = "";
+  for (const x of opts.tunes) tb.append(chip(x.name, `${x.beats_per_bar}/4 · ${x.bars} bars · ${x.bpm} bpm`, x.id === t.id, () => { pick.tune = x.id; save(); renderSetup(); }));
+  $("tunehint").textContent = "Starts: " + t.chords.slice(0, 8).join(" ") + (t.chords.length > 8 ? " …" : "");
+  const bpm = pick.bpm[t.id] || t.bpm;
+  $("bpm").value = bpm; $("bpmn").textContent = bpm + " bpm";
+  $("bpmhint").textContent = bpm === t.bpm ? "Its takes' tempo." : `Its takes: ${t.bpm} bpm.`;
+  for (const b of $("counts").children) {
+    b.setAttribute("aria-pressed", b.dataset.count === pick.count ? "true" : "false");
+    if (b.dataset.count === "voice") b.disabled = !opts.voice.available;
+  }
+  if (!opts.voice.available && pick.count === "voice") pick.count = "band";
+  $("counthint").textContent = !opts.voice.available ? `Counting in by voice is not available: ${opts.voice.why}.`
+    : pick.count === "voice" ? "The band listens for your count, plays from the next 1, and stops when you say \"stop\". Count again to start again. The tempo is the one you count." : "";
+  $("stoprow").hidden = !opts.voice.available || pick.count === "voice";
+  $("liststop").setAttribute("aria-pressed", pick.listen_stop ? "true" : "false");
+  $("liststop").textContent = pick.listen_stop ? "On" : "Off";
+  const ib = $("inputs"); ib.innerHTML = "";
+  for (const x of opts.inputs) ib.append(chip(x.name, null, inp && x.id === inp.id, () => { pick.input = x.id; pick.instrument = x.instrument; save(); renderSetup(); }));
+  $("inputhint").textContent = inp && inp.note || "";
+  if (!pick.instrument) pick.instrument = inp ? inp.instrument : "guitar";
+  const nb = $("instruments"); nb.innerHTML = "";
+  for (const x of opts.instruments) nb.append(chip(x.name, null, x.id === pick.instrument, () => { pick.instrument = x.id; save(); renderSetup(); }));
+  const pb = $("parts"); pb.innerHTML = "";
+  for (const p of opts.parts) pb.append(chip(p.name, null, pick.parts[p.id] !== false, () => { pick.parts[p.id] = pick.parts[p.id] === false; save(); renderSetup(); }));
+  for (const id of ["vol", "lvol"]) { const v = $(id); v.min = opts.volume.min; v.max = opts.volume.max; }
+  $("vol").value = pick.volume_db; $("voln").textContent = fmtDb(pick.volume_db);
+}
+
+$("bpm").oninput = () => { const t = tune(); pick.bpm[t.id] = +$("bpm").value; save(); renderSetup(); };
+$("slower").onclick = () => { const t = tune(); pick.bpm[t.id] = Math.max(50, (pick.bpm[t.id] || t.bpm) - 2); save(); renderSetup(); };
+$("faster").onclick = () => { const t = tune(); pick.bpm[t.id] = Math.min(220, (pick.bpm[t.id] || t.bpm) + 2); save(); renderSetup(); };
+for (const b of $("counts").children) b.onclick = () => { pick.count = b.dataset.count; save(); renderSetup(); };
+$("liststop").onclick = () => { pick.listen_stop = !pick.listen_stop; save(); renderSetup(); };
+$("vol").oninput = () => { pick.volume_db = +$("vol").value; $("voln").textContent = fmtDb(pick.volume_db); save(); };
+
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: body ? {"Content-Type": "application/json"} : {}, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+
+$("start").onclick = async () => {
+  const t = tune();
+  $("start").disabled = true; show("Asking the other apps to let go, and opening the device…");
+  try {
+    render(await api("POST", "/api/start", { tune: t.id, bpm: pick.bpm[t.id] || t.bpm, input: pick.input, instrument: pick.instrument,
+      count: pick.count, parts: pick.parts, volume_db: pick.volume_db, listen_stop: pick.listen_stop }));
+    show("");
+  } catch (e) { show(e.message, true); }
+  $("start").disabled = false; poll();
+};
+$("stop").onclick = async () => { $("stop").disabled = true; try { render(await api("POST", "/api/stop")); } catch (e) { show(e.message, true); } $("stop").disabled = false; };
+let volT = null;
+$("lvol").oninput = () => {
+  const v = +$("lvol").value; $("lvoln").textContent = fmtDb(v); pick.volume_db = v; save();
+  clearTimeout(volT); volT = setTimeout(() => api("PATCH", "/api/live", { volume_db: v }).catch(() => {}), 120);
+};
+
+const STATE = { "starting": "Starting", "counting in": "Counting in", "playing": "Playing", "listening for your count": "Listening for your count",
+  "stopping": "Stopping", "stopped": "Stopped", "error": "Stopped by a problem" };
+
+function render(s) {
+  st = s;
+  const on = !!s.playing;
+  $("live").hidden = !on; $("setup").hidden = on;
+  if (!on) {
+    if (s.error) show(s.error, true); else if (s.message && s.state === "stopped") show(s.message);
+    return;
+  }
+  $("lstate").textContent = STATE[s.state] || s.state;
+  $("ltune").textContent = `${s.tune} · ${s.count ? s.count.bpm : s.bpm} bpm · ${s.input}`;
+  const bpb = s.count ? s.count.beats_per_bar : s.beats_per_bar, b = s.beat;
+  const dots = $("dots");
+  if (dots.children.length !== bpb) { dots.innerHTML = ""; for (let i = 1; i <= bpb; i++) { const d = document.createElement("span"); d.className = "dot" + (i === 1 ? " one" : ""); dots.append(d); } }
+  [...dots.children].forEach((d, i) => d.classList.toggle("on", !!(b && b.bar_beat === i + 1)));
+  $("chord").textContent = b && b.chord ? b.chord : "";
+  $("cwhy").textContent = b ? [b.key ? `key ${b.key}` : "", b.predicted ? `chart: ${b.predicted}, sure ${Math.round(100 * b.sure)}%` : "", b.bpm ? `${b.bpm} bpm` : ""].filter(Boolean).join(" · ") : (s.message || "");
+  const lp = $("lparts");
+  if (lp.children.length !== Object.keys(s.parts).length) {
+    lp.innerHTML = "";
+    for (const [id, p] of Object.entries(s.parts)) {
+      const row = document.createElement("div"); row.className = "part"; row.id = "part-" + id;
+      row.innerHTML = `<span class="led"></span><span class="name"></span><span class="what"></span><button class="toggle" type="button"></button>`;
+      row.querySelector(".toggle").onclick = async () => { const now = st.parts[id].on; pick.parts[id] = !now; save();
+        try { render(await api("PATCH", "/api/live", { parts: { [id]: !now } })); } catch (e) {} };
+      lp.append(row);
+    }
+  }
+  for (const [id, p] of Object.entries(s.parts)) {
+    const row = $("part-" + id);
+    row.querySelector(".name").textContent = p.name;
+    row.querySelector(".led").className = "led" + (p.on && p.playing ? " go" : "");
+    row.querySelector(".what").textContent = !p.on ? "off" : p.playing ? "playing" : "waiting to come in";
+    const t = row.querySelector(".toggle"); t.setAttribute("aria-pressed", p.on ? "true" : "false"); t.textContent = p.on ? "On" : "Off";
+  }
+  if (document.activeElement !== $("lvol")) { $("lvol").value = s.settings.volume_db; $("lvoln").textContent = fmtDb(s.settings.volume_db); }
+  const lv = s.input_db;
+  $("lvln").textContent = lv == null ? "silent" : `${lv} dBFS`;
+  const w = lv == null ? 0 : Math.max(0, Math.min(100, (lv + 60) / 60 * 100));
+  $("lvl").style.width = w + "%"; $("lvl").className = lv != null && lv > -6 ? "hot" : "";
+  if (s.error) show(s.error, true); else if (s.message) show(s.message); else show("");
+  $("timing").textContent = JSON.stringify(s.timing, null, 1);
+}
+
+async function poll() {
+  clearTimeout(pollTimer);
+  try { render(await api("GET", "/api/status")); } catch (e) {}
+  pollTimer = setTimeout(poll, document.hidden ? 4000 : (st && st.playing ? 200 : 1500));
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+
+(async () => {
+  try {
+    opts = await api("GET", "/api/options");
+    if (opts.device !== "alsa") $("dev").textContent = "no device: a recorded take as the input";
+    if (opts.problems.length) show("Some tunes did not load: " + opts.problems.join("; "), true);
+    if (pick.volume_db == null) pick.volume_db = opts.volume.default;
+    renderSetup();
+  } catch (e) { show("The band's service is not answering: " + e.message, true); }
+  poll();
+})();
+</script>
+</body>
+</html>

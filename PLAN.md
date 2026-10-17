@@ -462,6 +462,83 @@ count-in (the band plays a bar of clicks at times it schedules and gives them to
 hand-over of the 18i8 with the recorders; the LIVA's numbers above; the band's level against the
 player; the player's ear on the clips, the chop's "and" above all.
 
+### The Ugly Duckling String Band (2026-10-17)
+
+The live band as a program of its own (the player: not part of the practice app): `ugly_duckling/`, the service
+`ugly-duckling` on port 8004 of the control unit, with a phone page, listed on the home page
+(http://practice.local/). It uses the band player above for its sound and the transcription project's
+`transcribe.liveband` (and `voicecount`) for its listening and deciding, from the path in `[band] transcribe`.
+
+- **The parts.** `server.py` (the page and the API), `session.py` (one run, Start to Stop), `duplex.py` (the
+  device both ways), `tunes.py` (the charts), `config.py`. The engine and the player are `ambient/bandengine.py`
+  and `ambient/bandplayer.py`. Config: `/etc/ugly-duckling.toml` from `config/ud-pi.toml`; the desktop's,
+  `config/ud-desktop.toml`.
+- **One device, one clock.** The engine's process plays a block and then reads whatever the capture has, never
+  waiting for it, so the capture is read every 2.7 ms by the process that keeps the device fed. The input (the
+  chosen channels, mixed to mono) and the device's return of its own playback (capture channels 10-11, PCM
+  11-12) go into a ring in shared memory, which the listening reads in blocks of 256. Playback and capture take
+  the same period and buffer: on `practice` both were granted 128 frames and 768 (16 ms).
+- **The clock.** The two sample counts differ by a constant `L` (the capture frame that holds the return of
+  playback frame m is m + L). It is estimated after every block from the two streams' delays as the driver
+  reports them (median of 256), and measured exactly from the count-in's first click, found in the loopback.
+  A cue for stream time t plays at engine frame `t * 48000 - L - converters` (`converter_ms`, 1.0: an estimate;
+  the loopback is digital and does not see the converters). An xrun moves the estimate, and `L` with it.
+- **The count-in.** "Band clicks a bar" (the default): a bar of clicks (two bars in 2/4), 0.6 s after Start is
+  ready, on the engine's clock; their times in the stream go to `LiveBand` as `count_in`, and the chart starts
+  on the next 1. "I count it in": `voicecount.VoiceBand` with Vosk's words (the model in `[voice] model`); the
+  band starts on a spoken count, stops on "stop", and starts again on the next count. Without Vosk or its model
+  the page does not offer it, nor the spoken "stop".
+- **The page** picks the tune, the tempo (default: the tune's takes' tempo, those to a metronome first), the
+  count-in, the input (room mic, Nadine, piezo), the instrument (the follower's preset), the parts (bass, chop,
+  chords) and the band's volume. Playing, it shows the beat in the bar, the chord, the key and the chart's
+  guess, each part's on/off and whether it has come in, the input's level, and the timing.
+- **The tunes**: Red Wing, Down Yonder, Big Sciota (with its second endings), Cherokee Shuffle and Saint Anne's
+  Reel (AABB), Tennessee Waltz (3/4), and the free guitar take's form (G C G D, 2/4), from the transcription
+  project's `chords.txt` and `takes.csv` (`[[tunes]]` in the config).
+- **Safety.** Nothing opens the device until Start. Before opening it the band asks the other apps to let go
+  (`/api/yield`, `ambient/peers.py`) and refuses to start while one records; it answers `/api/yield` itself by
+  stopping. The volume is capped at +12 dB over the band's own level (-33 dBFS gated rms at 0 dB), which puts it
+  at about -21 dBFS, the level takes play at; every sample is clipped at -1 dBFS whatever the volume. A stop (the
+  page, a yield, an error, "stop", or 10 minutes with nothing played): nothing new starts, what sounds rings
+  0.6 s, a 0.2 s fade, the device closed (about 1 s in all). The other apps list 8004 among their peers.
+- **No device** (`[device] kind = "file"`, `tools/ud-desktop`, `tools/ud_run.py`): the band paced as a sound
+  card plays it, nothing heard, and a take given as the capture, its bar 1 on the beat after the count-in; the
+  loopback is the band's mix 300 frames later, and the estimate is 37 frames off on purpose. The whole loop runs:
+  the click found at exactly 300 frames, the band, the stop. `tests/test_ud.py`.
+
+**Measured on `practice` (the Chromebox), 2026-10-17, no sound:**
+
+- The self-check (`POST /api/selfcheck?input=room&seconds=10`: the device opened both ways, the engine's
+  silence played, closed): passes for each input. 128-frame periods and a 16 ms buffer on both sides; no
+  underrun or overrun; the loopback exactly 0 (nothing played); `L` estimated 3.0 ms (144 frames), steady to
+  the frame; opened in 0.7 s. Room tone: room mic -46.5 dBFS rms, Nadine -64.9, piezo -101 (nothing on it).
+- The whole loop with no device (Red Wing on the dobro, 60 s; Down Yonder's bass part, 45 s): the click found
+  at exactly the simulated round trip; no note late or dropped, no underrun. The listening 102-134 ms of CPU a
+  second (210 with Vosk listening for "stop"), its worst block 8-11 ms (21 with Vosk); the engine 44-61 ms a
+  second. In all about 35% of one core, 356 MB. Each cue's margin when it reached the engine (its first note's
+  frame less the first frame still open; the 16 ms buffer comes after): min 22-25 ms, median 33 ms. The roots
+  played against the chart: 0.95 (Red Wing), 1.00 (Down Yonder).
+- The band player's replay there (`tools/band_replay.py red-wing bass-dy`, the take at the wall clock's pace,
+  paced output): every note the offline render's, none late or dropped, no underrun; margin at the player median
+  22-24 ms, min 18.5; the engine's response max 1.7-6.1 ms against a 16 ms buffer.
+- So the budget, bass and chords: the 50 ms lead; the capture's block and the listening, median 12-13 ms;
+  the 16 ms buffer and `L` (3 ms) and the converters (about 1 ms) after the margin; left over at least 18 ms.
+- The chords' entry is sensitive to the beat's first bars: on Red Wing one run's count-in, 0.8 ms different from
+  another's, kept the beat's confidence under the chords' 0.8 for 30 beats instead of 3. Offline with the same
+  times it does the same: the band's thresholds, not the service.
+
+**Untested until the first live run** (only with the player): the click's return found on the real loopback,
+and `L` measured against the estimate; the band heard at all, and its level; the converters' delay; the room
+mic hearing the band from the speakers (no echo cancellation yet: the band can follow itself; the page says
+to keep it low or use a pickup); Vosk on the room's real voice and the band behind it; a long session.
+How to try it: open http://practice.local/ and "Ugly Duckling String Band" (or port 8004); pick the tune,
+the input and the count-in, the volume low, Start; Stop, or say "stop".
+
+**Deploy:** `tools/deploy-ud` (after checking the other apps are idle): this tree to `~/ugly-duckling` on the
+unit (its own venv, so ambient-room is not restarted), the transcription project's `pipeline/src` and the tunes'
+`chords.txt` and `takes.csv` to `~/dobro-transcription`, then `setup/install-ud.sh`. The Vosk model at
+`~/models/vosk-model-small-en-us-0.15` there.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.

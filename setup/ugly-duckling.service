@@ -1,0 +1,19 @@
+# The Ugly Duckling String Band. setup/install-ud.sh installs it as
+# /etc/systemd/system/ugly-duckling.service.
+[Unit]
+Description=Ugly Duckling String Band
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@APP@
+Environment=PYTHONPATH=@APP@
+ExecStart=@APP@/.venv/bin/python -m ugly_duckling.server
+# It opens the device only while the band plays; a stop lets it go within about a second.
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

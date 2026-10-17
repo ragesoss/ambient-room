@@ -1,0 +1,75 @@
+# The band on the desktop with no device: the band is paced as a sound card would play it (nothing heard) and the
+# input is a recorded take, given as if captured, its bar 1 on the beat after the count-in. Run with tools/ud-desktop.
+
+peers = []
+
+[web]
+host = "127.0.0.1"
+port = 8004
+
+[band]
+transcribe = "~/play/dobro-transcription/pipeline/src"
+tunes = "~/play/dobro-transcription/tunes"
+sounds = "sounds"
+lead_s = 0.05
+in_block = 256
+
+[device]
+kind = "file"
+block = 128
+buffer_ms = 10.67
+period_ms = 2.67
+file_tune = "red-wing"
+file_take = "take-01.flac"
+file_latency = 300
+
+[[inputs]]
+id = "take"
+name = "The take (a file)"
+channels = [0]
+instrument = "dobro"
+
+[voice]
+model = "~/.cache/voicecount/vosk/vosk-model-small-en-us-0.15"
+
+# The tunes, from the transcription project's tune folders (ugly_duckling/tunes.py): one pass of each form.
+[[tunes]]
+id = "red-wing"
+name = "Red Wing"
+folder = "dobro/red-wing"
+bars = "1-16"          # the file has the form twice
+
+[[tunes]]
+id = "down-yonder"
+name = "Down Yonder"
+folder = "dobro/down-yonder"
+
+[[tunes]]
+id = "big-sciota"
+name = "Big Sciota"
+folder = "dobro/big-sciota"
+bars = [1, 2, 3, 4, 1, 2, 3, 5, 6, 7, 8, 9, 6, 7, 8, 10]   # both parts repeat; bars 5 and 10 the second endings
+
+[[tunes]]
+id = "cherokee-shuffle"
+name = "Cherokee Shuffle"
+folder = "dobro/cherokee-shuffle"
+form = ["A", "A", "B", "B"]
+
+[[tunes]]
+id = "saint-annes-reel"
+name = "Saint Anne's Reel"
+folder = "dobro/saint-annes-reel"
+form = ["A", "A", "B", "B"]
+
+[[tunes]]
+id = "tennessee-waltz"
+name = "Tennessee Waltz"
+folder = "dobro/tennessee-waltz"
+
+[[tunes]]
+id = "g-c-g-d"
+name = "G C G D (the free guitar take)"
+folder = "guitar/free-2026-10-17"
+bars = "1-16"          # the form; the take's later bars have its own accidents
+

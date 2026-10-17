@@ -33,3 +33,7 @@ the room's speakers. Start with `PLAN.md`.
   on this desktop's PATH is Miniconda's, which does not see it.
 - Docs here are plain: short sentences, measured numbers with units, no
   marketing.
+- **The Ugly Duckling String Band** (`ugly_duckling/`, PLAN.md) is a second service from this tree, deployed
+  apart (`tools/deploy-ud`, to `~/ugly-duckling`). On the desktop: `tools/ud-desktop` (port 8004, no device, a
+  take as the input) or `tools/ud_run.py`. It never plays aloud unless Start is pressed on the unit; a live run
+  with the player only when the player says.

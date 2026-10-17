@@ -1,0 +1,5 @@
+# The Ugly Duckling String Band (ugly_duckling/): the band player's needs, and Vosk for the voice (the count-in by
+# voice and "stop"; optional: without it the page does not offer them). The venv is made with
+# --system-site-packages. FluidSynth is Debian's: sudo apt install libfluidsynth3.
+-r requirements-band.txt
+vosk==0.3.45
