@@ -325,6 +325,129 @@ The player, as dobro-transcription's band that follows was first being voiced ov
 - **First, offline,** as the band was built: evolution over a recorded take, choosing by its fit to
   the take, against a free wander, as A/B renders of the same take.
 
+### The band player (2026-10-16)
+
+The live band (the transcription project's `transcribe.liveband`, which the player named the Ugly
+Duckling String Band) decides each part's play for a beat 50 ms before the beat (`lead_s`); the chop
+on the "and" is decided half a beat earlier still. The band player sounds those decisions on time:
+`ambient/bandplayer.py`, `ambient/bandengine.py`, `ambient/fluid.py`, `ambient/output.py`, checked by
+`tools/band_replay.py`.
+
+- **The same notes as the offline render.** The player voices each cue with the transcription
+  project's own function (`transcribe.bandvoice`, imported from the path in `[band] transcribe`): the
+  notes, lengths, velocities, programs and pans of its `tools/band_render.py`.
+- **FluidSynth for these voices, not Csound.** The offline render plays the fonts through FluidSynth,
+  with their envelopes, filters and velocity layers, and GeneralUser's guitar and banjo use them (a
+  filter cutoff per velocity layer on the banjo, filter envelopes on both). Csound's `sfplay3m` plays
+  the samples without any of that, and Debian's Csound has no FluidSynth opcodes. So the band engine
+  runs FluidSynth's library (Debian's `libfluidsynth3`, through ctypes), one synth per part as the
+  offline render has it. With the parts sharing one synth, a voice another part had used started
+  differently: the chop up to 0.015 apart after the chords had played.
+- **Levels.** Fixed gains, so the parts sit as the offline render sets them by loudness (the chords
+  3 dB under the bass, the chop 5 dB under): the chords -8.3 dB and the chop -9.5 dB against the bass,
+  from the five development takes' renders, each part within 0.5 dB of its median
+  (`tools/band_replay.py levels`). At `gain_db` 0 the band plays at -33 dBFS gated rms, peaks -15
+  dBFS: 12 dB under the level takes play at. Its level against the player is the player's call.
+- **The output** (`ambient/output.py`): `alsa` writes straight to the device through alsa-lib, asks
+  for a period and buffer, reads back what it got, and follows the device's clock through its delay;
+  `paced` keeps a sound card's pace and buffer with no device and keeps what it plays; `aplay` as
+  before. Csound's own ALSA output is no option for a short buffer: it took 1024 frames (21 ms) for
+  every `-B` from 256 to 4096 on the desktop's ALSA null device (Csound 6.18), as on the Pi. The Csound
+  engine's block and output are the config's now too (`[output] block`, `output`, `period_ms`).
+- **The engine has a process of its own.** Python runs one thread at a time. In a thread beside the
+  listening, the engine's response (from the moment one block could go into the buffer to the moment
+  the next came) reached 2.3 ms at the 99.9th percentile and 3.8 ms at worst; in its own process
+  0.7 ms and 0.9-1.7 ms (block 128, a 21 ms buffer, the two takes).
+- **Late cues.** A cue's notes go to the engine as one group. If the engine has already computed past
+  its first note, the group sounds at once, shifted whole (a strum stays a strum), when it is no
+  later than its part allows: the bass and the chords 30 ms, the chop 15 ms, under the 25-40 ms an
+  ensemble tolerates. Later than that it is dropped. Both are counted by part. First settings.
+- **The clock** (`StreamClock`): engine time = stream time + offset. In a replay the stream's clock
+  is the wall clock: the offset is the wall time of the stream's sample 0 less that of the engine's
+  frame 0 (when the output plays it). Live, the 18i8's capture and playback share one sample clock:
+  the offset comes from when each started and from the round trip through the device, measured once.
+  The input's own latency (the capture's block, the converter) comes out of the lead before a cue
+  reaches the player.
+
+**The replay** (`tools/band_replay.py`, on the desktop, 2026-10-16). Red Wing on the dobro (77 s) and
+Down Yonder's bass part (43 s), as the band harness has them: the chart known and where it starts,
+the beat live from a cold start. The take went through `LiveBand` at the wall clock's pace in blocks
+of 256 samples (5.3 ms) at 48 kHz. The engine computed 128 frames (2.7 ms) at a time into a paced
+output with a 10.67 ms buffer. Nothing was played aloud.
+
+- Every cue on time: none late, none dropped (Red Wing 373 cues, 902 notes; Down Yonder 244, 603).
+  No underruns.
+- Every note heard within 0.67 ms of its time: FluidSynth starts a note on a 64-frame boundary.
+- Against the offline render (`band_render.py --sr 48000`, whose decisions are the live ones): the
+  same notes, all of them. The bass and chords sound 0.7-3.3 ms earlier live (median 2.0 ms), because
+  the `fluidsynth` program plays a MIDI file that much after its times (whole milliseconds, ticks of
+  1/960 s, and a 64-frame block late). The chop's "and" differs by decision: live it is placed by the
+  beat's tempo when it is decided, offline halfway to the next beat, which is not known yet live.
+  That moves it -37 to +18 ms on Red Wing, -25 to +17 ms on Down Yonder, median 0.
+- Checked to the bit: the capture is the engine's parts mixed (to 16 bits); each part is its logged
+  notes rendered again; the offline render is its notes at the frames the `fluidsynth` program uses.
+  So the onsets in the engine's log are the ones heard.
+- Clips for the player (the take with the band, 25 s from the first chords, both at -20 LUFS, the
+  band's overall loudness against the take matched): offline against live, in the transcription
+  project's `outputs/band-player-2026-10-17/` (not in git).
+
+**The delay budget** (the bass and chords; the chop has half a beat more), the two takes:
+
+| | median | worst |
+|---|---|---|
+| lead: decided this long before its time | 50 ms | 50 ms |
+| to the player: the capture's block (5.3 ms) and the band's compute | 7.4 ms | 10.6 ms |
+| the engine: from the first frame still open to its being heard (a block of 2.7 ms and the buffer of 10.67 ms at most) | 9.3 ms | 10.5 ms |
+| left over when the cue reached the player | 33.4 ms | 29.4 ms |
+
+On a sound card the device's own latency (USB, converters) comes on top: not measurable here.
+
+**What the desktop sustains** (no device; i7-12700K under the powersave governor, no real-time
+priority: the user's `rtprio` limit is 0):
+
+- The engine's response at block 128, in its own process: median 0.2-0.35 ms, 99.9th percentile
+  under 1 ms, worst 4.4 ms in 6 minutes of replays. The buffer must hold more than the worst: 10.67 ms
+  (4 blocks) stayed fed through 9 replays (8.7 minutes). Smaller ran dry now and then: block 64 with a
+  4.0 ms buffer 3 times (1.8 ms of silence in all) and with 5.3 ms once (3.4 ms), 43 s each; block 128
+  with 8 ms once (1.7 ms) in 5 minutes. So the engine stalls now and then for up to about 9 ms.
+- Its cost: FluidSynth 4.7 ms a second of audio running flat out, the whole engine 8.3 (block 64), 5.9
+  (128) and 4.7 ms (256). At the wall clock's pace 38-66 ms a second, as the CPU slows between blocks.
+- The listening (`LiveBand`) beside it: 92-158 ms a second, its worst block 6.6-7.5 ms.
+- The desktop's own sound goes through PipeWire, whose graph runs in quanta of 1024 frames (21 ms) by
+  default (`clock.quantum`, minimum 32). Not measured: nothing plays aloud here.
+- So the band's profile: block 128, buffer 10.67 ms (`[band]`), and the engine in its own process.
+
+**On the practice device (the LIVA), not touched yet.** Celeron N2807, 2 cores; about 11 times slower
+than the desktop on the piano detector. Its USB audio driver runs with `lowlatency=0` (piano-recorder,
+for fewer playback dropouts in T9), which may not grant a short period. Only with the player's
+go-ahead, with the recorders idle:
+
+1. Copy the branch beside the service, not over it (`tools/deploy` restarts the service):
+   `rsync -a --exclude .venv --exclude .git ./ practice:band-player/` from this tree, and
+   `rsync -a --relative ~/play/dobro-transcription/./pipeline ~/play/dobro-transcription/./tunes/dobro/red-wing ~/play/dobro-transcription/./tunes/bass/down-yonder practice:dobro-transcription/`.
+2. There: `sudo apt install libfluidsynth3 fluidsynth`; `cd ~/band-player && /usr/bin/python3 -m venv
+   --system-site-packages .venv && .venv/bin/pip install -r requirements-band.txt`.
+3. CPU and margins, no sound: `.venv/bin/python tools/band_replay.py red-wing bass-dy --config
+   config/pi.toml --transcribe ~/dobro-transcription --out ~/band-replay`. It reports the listening's
+   compute, the engine's CPU and response, each cue's margin, and late and dropped cues. If cues come
+   late, again with `--lead 0.1`. The listening alone: `cd ~/dobro-transcription/pipeline &&
+   PYTHONPATH=src ~/band-player/.venv/bin/python tools/band_stream_timing.py --block 256`.
+4. The real output, aloud through the speakers (the monitor knob as the player likes):
+   `.venv/bin/python tools/band_replay.py bass-dy --config config/pi.toml --transcribe
+   ~/dobro-transcription --output alsa --out ~/band-alsa`, then with `--buffer-ms 21.3`. It reports
+   the period and buffer the 18i8 granted, underruns, and how steady its clock looked.
+5. The round trip through the 18i8 (for the clock's offset): `sudo apt install zita-alsa-pcmi-utils`,
+   then `alsa_delay hw:CARD=USB hw:CARD=USB 48000 128 3 <input> <output>` with the input the loopback's
+   capture channel 11 and the output PCM 1 (run it without arguments first: it prints its usage). Its
+   test tones play through the speakers. The loopback leaves out the converters; a cable from an
+   output to an input puts them in.
+
+**Left for a first live run** (also in the transcription project's `docs/band-that-follows.md`):
+capture on the 18i8 with the band's output on the same clock, and the offset from the round trip; the
+count-in (the band plays a bar of clicks at times it schedules and gives them to `LiveBand`); the
+hand-over of the 18i8 with the recorders; the LIVA's numbers above; the band's level against the
+player; the player's ear on the clips, the chop's "and" above all.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.
