@@ -51,6 +51,42 @@ def grade(sess) -> dict:
     return out
 
 
+def first_notes(sess) -> dict:
+    """Each part's first note against where it belongs: the bass and the chords on beat 1 of bar 1 (the beat after
+    the count-in), the chop on its "and", in engine frames (the count-in's clicks are on the same clock). ms late
+    (+) or early (-), from the frame FluidSynth started the note."""
+    log = list(getattr(sess.engine, "log", None) or [])
+    if not sess.clicks or not log:
+        return {}
+    spb = 60.0 / sess.s.bpm
+    n = len(sess.clicks)
+    one = sess.clicks[0] + n * spb * RATE
+    out = {}
+    for part, off in (("bass", 0.0), ("comp", 0.0), ("chop", 0.5)):
+        starts = [lg for lg in log if lg.part == part and lg.start is not None]
+        if not starts:
+            out[part] = None
+            continue
+        lg = min(starts, key=lambda g: g.start)
+        beat = (lg.start - sess.clicks[0]) / (spb * RATE) - n
+        out[part] = {"beat_of_tune": round(beat, 3), "cue_beat": lg.tag[0] if lg.tag else None,
+                     "ms_from_its_place": round(1000 * (lg.start - (one + off * spb * RATE)) / RATE, 2)}
+    return out
+
+
+def drift(sess, every: int = 4) -> list:
+    """The band's beats against the count-in's grid (the clicks' tempo, on from the beat after them): (beat, ms after
+    its grid time, bpm, confidence), every `every` beats, and the last."""
+    band = sess.band if not hasattr(sess.band, "bands") else sess.band.band
+    if band is None or not sess.count_in:
+        return []
+    spb = 60.0 / sess.s.bpm
+    one = sess.count_in[-1] + spb
+    bs = band.beats
+    return [(i, round(1000 * (b.t - (one + i * spb)), 1), round(b.bpm, 1), round(b.confidence, 2))
+            for i, b in enumerate(bs) if i % every == 0 or i == len(bs) - 1]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default=str(HERE / "config" / "ud-desktop.toml"))
@@ -61,13 +97,32 @@ def main() -> None:
     ap.add_argument("--input", default=None)
     ap.add_argument("--instrument", default=None)
     ap.add_argument("--volume", type=float, default=0.0)
+    ap.add_argument("--take", default=None, help="the tune's take to give as the capture (no device), e.g. take-01.flac")
+    ap.add_argument("--room-ir", default=None, help="no device: the band heard through this room response (.npy/.wav)")
+    ap.add_argument("--room-gain-db", type=float, default=0.0)
+    ap.add_argument("--take-gain", type=float, default=1.0, help="no device: the take's level (0: the player silent)")
+    ap.add_argument("--take-seconds", type=float, default=0.0, help="no device: the take cut this long after its bar 1")
+    ap.add_argument("--take-path", default=None, help="no device: any recording as the capture, its bar 1 at --bar1 s")
+    ap.add_argument("--bar1", type=float, default=0.0)
+    ap.add_argument("--no-echo", action="store_true", help="leave the band's own sound in the input")
+    ap.add_argument("--count-bars", default="auto", help="the band's count-in: auto, 1 or 2 bars")
     ap.add_argument("--json", default=None)
     ap.add_argument("--logs", type=int, default=0, help="print the band's first N beats' logs")
     a = ap.parse_args()
     cfg = load_config(Path(a.config))
+    if a.take:
+        cfg.device.file_tune, cfg.device.file_take = a.tune, a.take
+    if a.take_path:
+        cfg.device.file_path, cfg.device.file_bar1_s = a.take_path, a.bar1
+    if a.room_ir:
+        cfg.device.file_room_ir, cfg.device.file_room_gain_db = a.room_ir, a.room_gain_db
+    cfg.device.file_take_gain, cfg.device.file_take_seconds = a.take_gain, a.take_seconds
+    if a.no_echo:
+        cfg.echo = False
     band = Band(cfg)
     body = {"tune": a.tune, "bpm": a.bpm, "count": a.count, "input": a.input, "instrument": a.instrument,
-            "volume_db": a.volume, "listen_stop": False}
+            "volume_db": a.volume, "listen_stop": False,
+            "count_bars": a.count_bars}
     band.start(body)
     sess = band.session
     t0 = time.monotonic()
@@ -80,10 +135,13 @@ def main() -> None:
               f"{parts}  input {s['input_db']} dBFS", flush=True)
     timing = sess.timing()
     band.stop()
+    ended = sess.ended - sess.started if sess.ended else None
     report = {"tune": a.tune, "status": sess.status()["state"], "error": sess.error, "message": sess.message,
+              "stop_reason": sess._stop_reason, "stream_s": round(sess.read / RATE, 2), "ran_s": ended,
+              "recording": str(sess.rec.path) if sess.rec and sess.rec.on else None,
               "L_estimate_frames": sess.L_est_ref, "L_frames": sess.L, "L_measured": sess.L_measured,
               "count_in": [round(t, 4) for t in sess.count_in], "timing": timing, "final": sess.final,
-              "grade": grade(sess)}
+              "grade": grade(sess), "first_notes": first_notes(sess), "drift": drift(sess)}
     print(json.dumps(report, indent=1, default=str))
     lb = sess.band if not hasattr(sess.band, "bands") else sess.band.band
     for lg in (lb.logs[: a.logs] if lb is not None else []):

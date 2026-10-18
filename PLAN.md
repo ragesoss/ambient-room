@@ -539,6 +539,51 @@ unit (its own venv, so ambient-room is not restarted), the transcription project
 `chords.txt` and `takes.csv` to `~/dobro-transcription`, then `setup/install-ud.sh`. The Vosk model at
 `~/models/vosk-model-small-en-us-0.15` there.
 
+### The first live runs, and what changed (2026-10-17)
+
+The player played with the band twice: the dobro on the room mic (Cherokee Shuffle at 170), then the bass on its
+piezo (Down Yonder at 120: "impressive. i was able to lead the band to speed up smoothly"). From the first: the band
+"cues heavily on itself from the speakers", "gradually slows, rather than quickly stopping, if i stop playing", and
+comes in late after the count-in; with the chart it plays on with nobody playing, "just on a delay relative to the
+count-in". The transcription project's `docs/band-that-follows.md` ("The first live runs") has the causes and the
+listening's numbers; here, the service.
+
+- **The cause was the band following itself**, reproduced with no device: `[device] file_room_ir` (`tools/ud_run.py
+  --room-ir`, a room from `tools/ud_room.py`) puts the band's own output, through a room's response, into the input.
+  With nobody playing the band drifted 236 ms late by beat 12 and slowed from 170 to 136 bpm. The clock was right:
+  every click in the loopback at its engine frame plus `L`.
+- **The band's own sound taken out** of the input it follows (`[band] echo`, per input `echo`): the transcription
+  project's `transcribe.echo` in the capture path, block by block (256 frames, no delay), the loopback as the
+  reference, from the count-in on; what it subtracted goes to the beat follower beside the input less it. Each input's
+  learnt room is kept in `~/.cache/ugly-duckling/echo-<input>.npz` and the next session starts from it. Removed:
+  18-22 dB once the room is known, 2-7 dB in a cold room's first 5 s, 19.5 dB after 20 s (the player as loud as the
+  band). With the player's take and the band as loud in the mic, the band now stays within -70 to +60 ms of the
+  player's grid at 168-173 bpm, as with no band in the mic at all; without it, 6 s behind by beat 86.
+- **The room mic always captured** (`[device] room`, input 4: capture channel 3), whichever input the band follows:
+  its own echo canceller (0.1 s of room) gives the room's delay, the output to the speakers to the mic, logged every
+  2 s (`reliable` false when the response's peak is under 8 times its median or under 1 dB was removed lately); the
+  page shows "room delay: N ms". The installer adds `room = [3]` to an `/etc/ugly-duckling.toml` from before.
+- **The entrance**: every part's first note within 0.24 ms of beat 1 (the chop of its "and"), at 170 and 100 bpm, no
+  device. The parts no longer come in over `hold` beats after the band's own count-in, and beat 1 is placed by the
+  clicks alone (`docs/band-that-follows.md`).
+- **The count-in**: two bars at or above `[band] two_bar_bpm` (150), one below (in 2/4 each counted bar is two of the
+  tune's); the page's count-in card shows which before Start ("Count-in: 2 bars (8 clicks; at 170 bpm: two bars from
+  150 bpm up)"), with Auto, 1 bar and 2 bars to choose; the playing view repeats it under the input meter. All the
+  clicks go to the band. "I count it in" shows the expectation (one bar, or "one ... two ..." and a bar).
+- **Stopping**: no attack from the player for `[band] stop_beats` (5) beats (8 before the first) and the band stops
+  ("You stopped playing"): what sounds rings 0.6 s and fades. A rise counts as an attack only `noise_gate_db` (6) over
+  the room's noise. No device, the take cut 20 s in: the last note 2.6 s after the cut at 170, 4.1-5.4 s at 100.
+- **Every session recorded** (`ugly_duckling/record.py`, `[record]`): `~/ud-sessions/<start time>/capture.flac`
+  (48 kHz, 24-bit: the input, the loopback, the input less the band, the room mic) and `session.jsonl` (the
+  settings, the tune and chart, the count-in, the clock, every beat, cue and decision, the levels every half second,
+  the room's delay, the stop, and at the end every note's frame). Written by a thread of its own; the oldest deleted
+  beyond 40 sessions or 2 GB; nothing recorded under 2 GB free; at most 30 minutes a session. On the desktop:
+  `tools/pull-ud-session [NAME|latest|list]` copies one to the transcription project's `outputs/ud-sessions/`, and
+  `tools/ud_session_timing.py` reads it: each click and the band's first notes in the loopback against the count's
+  grid, the band's beats against it as the session went, the room's delay.
+- Fixed on the way: two races at a stop (the status read the ring as it closed; the engine's last report read it
+  after). `UD_TRANSCRIBE` points a run at a worktree of the transcription project.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.
