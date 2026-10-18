@@ -1,0 +1,22 @@
+#!/bin/sh
+# Copy a session of the Ugly Duckling String Band from the control unit (its capture.flac and session.jsonl,
+# ugly_duckling/record.py), to replay and grade it here.
+#   tools/pull-ud-session [NAME|latest|list] [DEST_DIR] [HOST]
+#   NAME: a session folder's name (2026-10-17_163254); latest (the default): the newest; list: what is there.
+#   DEST_DIR: default ~/play/dobro-transcription/outputs/ud-sessions (not in git). HOST: default practice.
+set -eu
+name=${1:-latest}
+dest=${2:-$HOME/play/dobro-transcription/outputs/ud-sessions}
+host=${3:-practice}
+dir=$(ssh "$host" "cd ugly-duckling && .venv/bin/python -c 'from pathlib import Path; from ugly_duckling.config import load_config; print(Path(load_config().record.dir).expanduser())'")
+if [ "$name" = list ]; then
+    ssh "$host" "cd '$dir' 2>/dev/null && du -sh -- */ 2>/dev/null" || echo "no sessions in $dir"
+    exit 0
+fi
+if [ "$name" = latest ]; then
+    name=$(ssh "$host" "ls -1 '$dir' 2>/dev/null | sort | tail -1")
+    [ -n "$name" ] || { echo "no sessions in $host:$dir" >&2; exit 1; }
+fi
+mkdir -p "$dest"
+rsync -a "$host:$dir/$name" "$dest/"
+ls -l "$dest/$name"

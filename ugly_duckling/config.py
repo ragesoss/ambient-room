@@ -1,6 +1,7 @@
 """The Ugly Duckling String Band's config: the device (both ways), the inputs, the tunes, the port, the peers.
 
-Read from $UGLY_DUCKLING_CONFIG, else /etc/ugly-duckling.toml (installed once by `setup/install-ud.sh` from
+Read from $UGLY_DUCKLING_CONFIG, else /etc/ugly-duckling.toml (and $UD_TRANSCRIBE, if set, for `[band] transcribe`:
+a worktree of the transcription project) (installed once by `setup/install-ud.sh` from
 `config/ud-pi.toml`). Devices, channels and controls come from here only: no code names a card.
 """
 
@@ -10,6 +11,8 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .record import RecordConfig
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_PATH = Path("/etc/ugly-duckling.toml")
@@ -24,6 +27,9 @@ class Device:
     card: str = "USB"  # for its controls (amixer -c)
     channels: int = 20  # the capture's channels
     loopback: list[int] = field(default_factory=lambda: [10, 11])  # capture channels that return the playback
+    # the room mic, captured whichever input the band follows: its echo path's delay is the room's (the speakers to
+    # a mic across the room), and it is recorded (empty: none)
+    room: list[int] = field(default_factory=list)
     block: int = 128  # frames the engine computes at a time
     buffer_ms: float = 16.0
     period_ms: float = 2.67
@@ -38,6 +44,14 @@ class Device:
     file_bar1_s: float = 0.0
     file_channel: int | None = None
     file_latency: int = 300
+    # the room, simulated: the band's own sound as the input hears it from the speakers (the band's mix, `file_latency`
+    # frames after it played, through the impulse response in `file_room_ir`, a .npy or .wav at 48 kHz, at
+    # `file_room_gain_db`); the take at `file_take_gain` (0: the player silent, the band alone in the room) and cut
+    # after `file_take_seconds` from its bar 1 (0: the whole take; for a player who stops)
+    file_room_ir: str = ""
+    file_room_gain_db: float = 0.0
+    file_take_gain: float = 1.0
+    file_take_seconds: float = 0.0
 
 
 @dataclass
@@ -47,6 +61,7 @@ class Input:
     channels: list[int]  # capture channels (from 0), mixed
     instrument: str = "guitar"  # the beat follower's and band's preset (transcribe: bass, guitar, dobro)
     note: str = ""
+    echo: bool = True  # take the band's own sound out of this input (`transcribe.echo`)
 
 
 @dataclass
@@ -74,6 +89,18 @@ class Config:
     idle_minutes: float = 10.0  # a band started and not playing this long lets the device go
     voice_model: str = ""  # Vosk's model directory: "I count it in" and "stop"; empty: not offered
     rt_priority: int = 0
+    # the band's count-in: two bars at or above this tempo (a reel at 170 is not counted in half time), one below
+    two_bar_bpm: float = 150.0
+    # the band's own sound taken out of the input (`transcribe.echo`): on, and how much of the room it learns (s)
+    echo: bool = True
+    echo_taps_s: float = 0.3
+    echo_state_dir: str = "~/.cache/ugly-duckling"  # the room each input's canceller learnt, kept between sessions
+    # the band stops when the player has not attacked for this many beats (after the band's own sound is taken out;
+    # 8 before the player's first attack), and a rise counts as an attack only this far over the room's noise
+    # (`transcribe.livebeat` `stop_beats`, `noise_gate_db`; the transcription project's `tools/stop_study.py`)
+    stop_beats: int = 5
+    noise_gate_db: float = 6.0
+    record: RecordConfig = field(default_factory=RecordConfig)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -91,12 +118,12 @@ def load_config(path: Path | None = None) -> Config:
         web_host=web.get("host", "127.0.0.1"),
         web_port=int(web.get("port", 8004)),
         peers=[str(u) for u in raw.get("peers", [])],
-        transcribe=band.get("transcribe", Config.transcribe),
+        transcribe=os.environ.get("UD_TRANSCRIBE") or band.get("transcribe", Config.transcribe),
         tunes_root=band.get("tunes", Config.tunes_root),
         sounds_dir=sounds,
         tunes=list(raw.get("tunes", [])),
         inputs=[Input(i["id"], i.get("name", i["id"]), [int(c) for c in i["channels"]], i.get("instrument", "guitar"),
-                      i.get("note", "")) for i in raw.get("inputs", [])],
+                      i.get("note", ""), bool(i.get("echo", True))) for i in raw.get("inputs", [])],
         device=Device(**dev),
         lead_s=float(band.get("lead_s", 0.05)),
         in_block=int(band.get("in_block", 256)),
@@ -108,4 +135,11 @@ def load_config(path: Path | None = None) -> Config:
         idle_minutes=float(band.get("idle_minutes", 10.0)),
         voice_model=os.path.expanduser(voice.get("model", "")),
         rt_priority=int(band.get("rt_priority", 0)),
+        two_bar_bpm=float(band.get("two_bar_bpm", 150.0)),
+        echo=bool(band.get("echo", True)),
+        echo_taps_s=float(band.get("echo_taps_s", 0.3)),
+        echo_state_dir=band.get("echo_state_dir", Config.echo_state_dir),
+        stop_beats=int(band.get("stop_beats", 5)),
+        noise_gate_db=float(band.get("noise_gate_db", 6.0)),
+        record=RecordConfig(**{k: v for k, v in raw.get("record", {}).items()}),
     )

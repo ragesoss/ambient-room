@@ -31,6 +31,21 @@ def fluidsynth_here() -> bool:
     return all(f.is_file() for f in FONTS)
 
 
+@pytest.fixture(autouse=True)
+def _keep_out_of_home(tmp_path, monkeypatch):
+    """The sessions' recordings and the learnt rooms in the test's own folder, not the desktop's home."""
+    import ugly_duckling.config as uc
+    real = uc.load_config
+
+    def load(path=None):
+        cfg = real(path)
+        cfg.record.dir = str(tmp_path / "ud-sessions")
+        cfg.echo_state_dir = str(tmp_path / "echo")
+        return cfg
+    monkeypatch.setattr(uc, "load_config", load)
+    monkeypatch.setitem(globals(), "load_config", load)
+
+
 def transcription_here() -> bool:
     cfg = load_config(DESKTOP)
     return (Path(cfg.transcribe).expanduser() / "transcribe" / "liveband.py").is_file() and \
@@ -241,3 +256,59 @@ def test_api_refuses_during_a_recording_and_yields_when_asked(peer):
         assert st["playing"] is False and st["state"] == "stopped"
         assert "another app" in st["message"].lower()
         assert c.post("/api/stop").status_code == 200  # stopping a stopped band is fine
+
+
+# ------------------------------------------------------------------------------------------------- 2026-10-17
+
+def test_the_count_in_is_two_bars_from_150_bpm_or_as_chosen():
+    from ugly_duckling.session import count_in_plan
+    cfg = load_config(DESKTOP)
+    assert count_in_plan(cfg, 170, 4)["clicks"] == 8 and count_in_plan(cfg, 149, 4)["clicks"] == 4
+    assert count_in_plan(cfg, 170, 4, bars="1")["clicks"] == 4 and count_in_plan(cfg, 100, 4, bars="2")["clicks"] == 8
+    assert count_in_plan(cfg, 120, 3)["clicks"] == 3 and count_in_plan(cfg, 160, 2)["clicks"] == 8
+    assert "2 bars (8 clicks" in count_in_plan(cfg, 170, 4)["text"]
+    assert count_in_plan(cfg, 170, 4, count="voice")["kind"] == "voice"
+
+
+def test_old_sessions_are_pruned_by_count_and_size(tmp_path):
+    from ugly_duckling.record import prune
+    for k in range(5):
+        d = tmp_path / f"2026-10-17_00000{k}"
+        d.mkdir()
+        (d / "capture.flac").write_bytes(b"x" * 1000)
+    assert prune(tmp_path, 3, 1e9) == ["2026-10-17_000000", "2026-10-17_000001"]
+    assert prune(tmp_path, 10, 1500) == ["2026-10-17_000002", "2026-10-17_000003"]
+    assert [p.name for p in tmp_path.iterdir()] == ["2026-10-17_000004"]
+
+
+@needs_band
+def test_a_session_is_recorded_and_the_band_plays_from_beat_one(tmp_path):
+    """Cherokee Shuffle at 170 (two bars of count-in): every part's first note on beat 1 (the chop on its "and"),
+    within a millisecond; the capture and the log written."""
+    import json as _json
+
+    import soundfile as sf
+    from ugly_duckling.server import Band
+    cfg = load_config(DESKTOP)
+    cfg.device.file_take = "take-01.flac"
+    band = Band(cfg)
+    band.start({"tune": "cherokee-shuffle", "count": "band", "listen_stop": False, "instrument": "dobro"})
+    s = band.session
+    try:
+        assert duplex.wait_for(lambda: s.state == "playing", 8.0, 0.05)
+        time.sleep(4.0)
+    finally:
+        band.stop()
+    assert s.error is None and len(s.clicks) == 8
+    spb = 60.0 / s.s.bpm
+    one = s.clicks[0] + 8 * spb * RATE
+    for part, off in (("bass", 0.0), ("comp", 0.0), ("chop", 0.5)):
+        # where the band put it (a loaded machine may sound a cue late: the engine shifts it, and counts it)
+        first = min(lg.want for lg in s.engine.log if lg.part == part and lg.start is not None)
+        assert abs(first - (one + off * spb * RATE)) < 0.001 * RATE, part
+    d = s.rec.path
+    info = sf.info(str(d / "capture.flac"))
+    assert info.channels == 4 and info.samplerate == RATE and info.duration > 4
+    evs = [_json.loads(x)["ev"] for x in open(d / "session.jsonl")]
+    for k in ("start", "count_in", "clock", "beat", "cue", "decision", "level", "stop", "end"):
+        assert k in evs, k

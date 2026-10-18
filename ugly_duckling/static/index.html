@@ -101,6 +101,7 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
       <input type="range" id="lvol" step="1">
       <div class="row"><span class="grow sub">Your input</span><span class="num sub" id="lvln"></span></div>
       <div class="meter"><div id="lvl"></div></div>
+      <div class="row"><span class="grow sub" id="lcount"></span><span class="sub" id="lroom"></span></div>
     </div>
     <button class="big stop" id="stop" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"></rect></svg>Stop</button>
     <details><summary>Timing details</summary><pre id="timing"></pre></details>
@@ -126,9 +127,11 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
     <div class="card">
       <h2>Count-in</h2>
       <div class="chips" id="counts">
-        <button class="chip" type="button" data-count="band">Band clicks a bar<small>then plays on the next 1</small></button>
+        <button class="chip" type="button" data-count="band">The band clicks it in<small>then plays on the next 1</small></button>
         <button class="chip" type="button" data-count="voice">I count it in<small>say "one, two, three, four"</small></button>
       </div>
+      <div class="chips" id="countbars" style="margin-top:10px"></div>
+      <div class="hint" id="countplan" style="color:var(--ink2)"></div>
       <div class="hint" id="counthint"></div>
       <div class="row" id="stoprow"><span class="grow">Saying "stop" stops the band</span><button class="toggle" type="button" id="liststop" aria-pressed="true">On</button></div>
     </div>
@@ -154,7 +157,7 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
 const $ = (id) => document.getElementById(id);
 const KEY = "ud-settings";
 let opts = null, st = null, pollTimer = null;
-let pick = { tune: null, bpm: {}, input: null, instrument: null, count: "band", parts: {bass: true, chop: true, comp: true}, volume_db: 0, listen_stop: true };
+let pick = { tune: null, bpm: {}, input: null, instrument: null, count: "band", count_bars: "auto", parts: {bass: true, chop: true, comp: true}, volume_db: 0, listen_stop: true };
 try { Object.assign(pick, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
 function save() { try { localStorage.setItem(KEY, JSON.stringify(pick)); } catch (e) {} }
 
@@ -170,6 +173,15 @@ function chip(label, small, pressed, onclick) {
 }
 function tune() { return opts.tunes.find(t => t.id === pick.tune) || opts.tunes[0]; }
 function input() { return opts.inputs.find(i => i.id === pick.input) || opts.inputs[0]; }
+// the count-in Start will give (as the service decides it, `count_in_plan`)
+function countPlan(t, bpm) {
+  const bpb = t.beats_per_bar, unit = bpb >= 3 ? bpb : 2 * bpb, nums = [...Array(bpb).keys()].map(k => k + 1).join(", ");
+  if (pick.count === "voice") return `Count-in: yours, out loud: one bar (${nums}), or two (one … two … ${nums}).`;
+  const two = (opts.count_in && opts.count_in.two_bar_bpm) || 150, auto = !["1", "2"].includes(pick.count_bars);
+  const bars = auto ? (bpm >= two ? 2 : 1) : +pick.count_bars;
+  const why = auto ? `at ${bpm} bpm: two bars from ${two} bpm up` : "your choice";
+  return `Count-in: ${bars} bar${bars > 1 ? "s" : ""} (${bars * unit} clicks; ${why}).`;
+}
 function fmtDb(v) { return (v > 0 ? "+" : "") + Math.round(v) + " dB"; }
 
 function renderSetup() {
@@ -186,6 +198,10 @@ function renderSetup() {
     if (b.dataset.count === "voice") b.disabled = !opts.voice.available;
   }
   if (!opts.voice.available && pick.count === "voice") pick.count = "band";
+  const cb = $("countbars"); cb.innerHTML = ""; cb.hidden = pick.count === "voice";
+  for (const [v, label] of [["auto", "Auto"], ["1", "1 bar"], ["2", "2 bars"]])
+    cb.append(chip(label, null, (pick.count_bars || "auto") === v, () => { pick.count_bars = v; save(); renderSetup(); }));
+  $("countplan").textContent = countPlan(t, bpm);
   $("counthint").textContent = !opts.voice.available ? `Counting in by voice is not available: ${opts.voice.why}.`
     : pick.count === "voice" ? "The band listens for your count, plays from the next 1, and stops when you say \"stop\". Count again to start again. The tempo is the one you count." : "";
   $("stoprow").hidden = !opts.voice.available || pick.count === "voice";
@@ -222,7 +238,7 @@ $("start").onclick = async () => {
   $("start").disabled = true; show("Asking the other apps to let go, and opening the device…");
   try {
     render(await api("POST", "/api/start", { tune: t.id, bpm: pick.bpm[t.id] || t.bpm, input: pick.input, instrument: pick.instrument,
-      count: pick.count, parts: pick.parts, volume_db: pick.volume_db, listen_stop: pick.listen_stop }));
+      count: pick.count, count_bars: pick.count_bars || "auto", parts: pick.parts, volume_db: pick.volume_db, listen_stop: pick.listen_stop }));
     show("");
   } catch (e) { show(e.message, true); }
   $("start").disabled = false; poll();
@@ -276,8 +292,11 @@ function render(s) {
   $("lvln").textContent = lv == null ? "silent" : `${lv} dBFS`;
   const w = lv == null ? 0 : Math.max(0, Math.min(100, (lv + 60) / 60 * 100));
   $("lvl").style.width = w + "%"; $("lvl").className = lv != null && lv > -6 ? "hot" : "";
+  $("lcount").textContent = s.count_in ? s.count_in.text : "";
+  const room = s.echo && s.echo.room;
+  $("lroom").textContent = !room ? "" : room.reliable ? `room delay: ${room.delay_ms} ms` : "room delay: not enough of the band heard";
   if (s.error) show(s.error, true); else if (s.message) show(s.message); else show("");
-  $("timing").textContent = JSON.stringify(s.timing, null, 1);
+  $("timing").textContent = JSON.stringify({ timing: s.timing, echo: s.echo, levels: s.levels, recording: s.recording }, null, 1);
 }
 
 async function poll() {

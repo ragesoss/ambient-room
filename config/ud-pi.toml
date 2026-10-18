@@ -24,6 +24,23 @@ max_volume_db = 12.0
 ceiling_db = -1.0
 click_db = -18.0
 idle_minutes = 10
+# The count-in the band clicks: two bars at or above this tempo, one below (the page can choose either).
+two_bar_bpm = 150
+# The band's own sound taken out of the input it follows (the 18i8's return of its playback as the reference).
+echo = true
+# The band stops when the player has not attacked for this many beats (8 before the player's first attack), a rise
+# counting as an attack only this far over the room's noise (dB).
+stop_beats = 5
+noise_gate_db = 6.0
+
+# Each session recorded (the inputs, the loopback, a log) for replaying offline; the oldest deleted beyond these.
+[record]
+on = true
+dir = "~/ud-sessions"
+keep = 40
+max_gb = 2.0
+min_free_gb = 2.0
+max_minutes = 30
 
 [device]
 # piano-recorder's slots 2 and 3: the Scarlett 18i8 3rd Gen (its facts in that project's docs/components.md and
@@ -35,6 +52,8 @@ capture = "hw:CARD=USB,DEV=0"
 card = "USB"
 channels = 20
 loopback = [10, 11]
+# The room mic (input 4), captured whichever input the band follows: the room delay, and the recording.
+room = [3]
 # The band player's profile, measured on this unit (ambient-room PLAN.md, "The band player"): block 128, a 16 ms
 # buffer in periods of 128 frames. The capture takes the same period and buffer.
 block = 128

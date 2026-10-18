@@ -21,7 +21,7 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from .config import Config, load_config
-from .session import PARTS, PART_NAMES, Busy, Session, Settings, selfcheck
+from .session import PARTS, PART_NAMES, Busy, Session, Settings, count_in_plan, selfcheck
 from .tunes import load_tunes
 
 STATIC = Path(__file__).parent / "static"
@@ -46,6 +46,7 @@ class Band:
         self.voice_why = self._voice_check()
         self._model = None
         self.checking = False
+        self.echo_states: dict[str, dict] = {}  # each input's learnt room, from its last session (and from disk)
 
     def _voice_check(self) -> str | None:
         """Why counting in by voice is not offered here, or None."""
@@ -78,7 +79,29 @@ class Band:
                 "parts": [{"id": p, "name": PART_NAMES[p]} for p in PARTS],
                 "volume": {"default": c.volume_db, "min": c.min_volume_db, "max": c.max_volume_db},
                 "voice": {"available": self.voice_why is None, "why": self.voice_why},
+                "count_in": {"two_bar_bpm": c.two_bar_bpm, "bars": ["auto", "1", "2"]},
                 "device": c.device.kind}
+
+    def plan(self, tune_id: str, bpm: float | None, count: str = "band", bars: str = "auto") -> dict:
+        """The count-in a Start with these settings would give (for the page before Start)."""
+        tune = self.tunes.get(tune_id)
+        if tune is None:
+            raise ValueError(f"no tune {tune_id!r}")
+        return count_in_plan(self.cfg, float(bpm or tune.bpm), tune.beats_per_bar, count, bars)
+
+    def _echo_path(self, input_id: str) -> Path:
+        return Path(self.cfg.echo_state_dir).expanduser() / f"echo-{input_id}.npz"
+
+    def echo_state(self, input_id: str) -> dict | None:
+        st = self.echo_states.get(input_id)
+        if st is None:
+            try:
+                import numpy as np
+                with np.load(self._echo_path(input_id)) as z:
+                    st = {k: z[k] for k in z.files}
+            except (OSError, ValueError):
+                st = None
+        return st
 
     def start(self, body: dict) -> dict:
         with self.lock:
@@ -107,15 +130,29 @@ class Band:
             vol = float(body.get("volume_db", self.cfg.volume_db))
             vol = max(self.cfg.min_volume_db, min(self.cfg.max_volume_db, vol))
             listen_stop = bool(body.get("listen_stop", True)) and self.voice_why is None
-            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop)
+            bars = str(body.get("count_bars", "auto"))
+            if bars not in ("auto", "1", "2"):
+                raise ValueError("count_bars: auto, 1 or 2")
+            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars)
             words = self.model() if (count == "voice" or listen_stop) else None
-            sess = Session(self.cfg, tune, inp, s, self.voicing, words, on_end=self._ended)
+            sess = Session(self.cfg, tune, inp, s, self.voicing, words, on_end=self._ended,
+                           echo_state=self.echo_state(inp.id))
             sess.start()  # raises Busy
             self.session = sess
             return self.status()
 
     def _ended(self, sess: Session) -> None:
         self.last = sess
+        st = sess.echo_state if sess.echo is not None else None
+        if st is not None and sess.inp is not None:
+            self.echo_states[sess.inp.id] = st
+            try:
+                import numpy as np
+                p = self._echo_path(sess.inp.id)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                np.savez(p, **st)
+            except OSError:
+                pass
 
     def stop(self, reason: str = "stopped") -> dict:
         with self.lock:
@@ -202,6 +239,14 @@ def create_app(cfg: Config) -> FastAPI:
     def status():
         return band().status()
 
+    @app.get("/api/countin")
+    def countin(tune: str, bpm: float | None = None, count: str = "band", bars: str = "auto"):
+        """The count-in Start would give with these settings."""
+        try:
+            return band().plan(tune, bpm, count, bars)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
     @app.post("/api/start")
     def start(body: dict = Body(default={})):
         try:
@@ -224,8 +269,8 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.post("/api/yield")
     def yield_device():
-        """Another app wants the device (ambient/peers.py): the band stops and lets it go. Never refused: the band
-        records nothing."""
+        """Another app wants the device (ambient/peers.py): the band stops and lets it go. Never refused: the band's
+        session recording is for itself, not a take."""
         t0 = time.monotonic()
         band().stop("another app asked for the device")
         return {"released": True, "seconds": round(time.monotonic() - t0, 2)}

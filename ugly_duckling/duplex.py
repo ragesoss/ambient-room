@@ -43,6 +43,7 @@ import numpy as np
 from ambient.output import AlsaOutput, Output, OutputError, PacedOutput, asound
 
 ESTIMATES = 256  # L is the median of this many blocks' estimates
+CHANNELS = 3  # the ring's: 0 the input followed, 1 the loopback, 2 the room mic
 
 # the ring's header: float64 slots
 H_WRITE, H_L, H_OVERRUNS, H_INSERTED, H_PLAY_PERIOD, H_PLAY_BUFFER, H_CAP_PERIOD, H_CAP_BUFFER, H_FILE_START, \
@@ -51,11 +52,12 @@ HEADER = 16
 
 
 class Ring:
-    """Captured frames in shared memory: `channels` float32 channels (0 the input, mono; 1 the loopback), `frames`
+    """Captured frames in shared memory: `channels` float32 channels (0 the input, mono; 1 the loopback; 2 the room
+    mic), `frames`
     of them, written by one process (`write`) and read by another (`read`). The header (float64) holds the frames
     written in all and the clock's estimate (module docstring)."""
 
-    def __init__(self, frames: int, channels: int = 2, name: str | None = None):
+    def __init__(self, frames: int, channels: int = CHANNELS, name: str | None = None):
         self.frames, self.channels = frames, channels
         size = 8 * HEADER + 4 * frames * channels
         if name is None:
@@ -156,11 +158,12 @@ class AlsaDuplex(Output):
     S32_LE, RW_INTERLEAVED = 10, 3
 
     def __init__(self, ring: str, ring_frames: int, playback: str, capture: str, rate: int, period: int,
-                 periods: int, channels: int, inputs: list[int], loopback: list[int]):
-        self.ring = Ring(ring_frames, 2, ring)
+                 periods: int, channels: int, inputs: list[int], loopback: list[int], room: list[int] | None = None):
+        self.ring = Ring(ring_frames, CHANNELS, ring)
         self.play = AlsaOutput(playback, rate, period, periods)
         self.capture_device, self.rate, self.want = capture, rate, (period, period * periods)
         self.channels, self.inputs, self.loopback = channels, list(inputs), list(loopback)
+        self.room = list(room or [])
         self.cap = None
         self.cap_period = self.cap_buffer = 0
         self.read_total = 0  # capture frames put in the ring, with the silence put back after overruns
@@ -267,9 +270,10 @@ class AlsaDuplex(Output):
                 self._check(int(r), "read")
             x = self.buf[:r]
             scale = 1.0 / 2 ** 31
-            block = np.empty((r, 2), dtype=np.float32)
+            block = np.empty((r, CHANNELS), dtype=np.float32)
             block[:, 0] = x[:, self.inputs].mean(axis=1) * scale if self.inputs else 0.0
             block[:, 1] = x[:, self.loopback].mean(axis=1) * scale if self.loopback else 0.0
+            block[:, 2] = x[:, self.room].mean(axis=1) * scale if self.room else 0.0
             self.level = max(self.level, float(np.abs(block[:, 0]).max()))
             self.ring.header[H_LEVEL] = self.level
             self.ring.write(block)
@@ -287,7 +291,7 @@ class AlsaDuplex(Output):
         if self.lost_pending and not np.isnan(h[H_L]):
             lost = int(round(h[H_L] - est))
             if lost > 0:
-                self.ring.write(np.zeros((lost, 2), dtype=np.float32))
+                self.ring.write(np.zeros((lost, CHANNELS), dtype=np.float32))
                 self.read_total += lost
                 h[H_INSERTED] += lost
                 self.inserted += lost
@@ -309,12 +313,15 @@ class AlsaDuplex(Output):
 class FileDuplex(Output):
     """No device (module docstring): the band into a `PacedOutput` (nothing heard), the capture a recorded take.
     The take's sample 0 is the capture's frame `header[H_FILE_START]` (set by the service; until then, and after
-    the take, silence). The loopback is the band's mix, `latency` frames after it played. The header's estimate of
-    L is off by `bias` frames, as a driver's delays are, so the clicks' timing has something to correct."""
+    the take, room tone: noise at the level of the take's first 0.2 s, so that the take does not start out of
+    digital silence, a step the beat follower hears as an attack; a real room is never silent). The loopback is the
+    band's mix, `latency` frames after it played. The header's estimate of L is off by `bias` frames, as a driver's
+    delays are, so the clicks' timing has something to correct."""
 
     def __init__(self, ring: str, ring_frames: int, rate: int, buffer: int, audio: str, channel: int | None = None,
-                 latency: int = 300, bias: int = 37, capture: str | None = None):
-        self.ring = Ring(ring_frames, 2, ring)
+                 latency: int = 300, bias: int = 37, capture: str | None = None, room_ir: str = "",
+                 room_gain_db: float = 0.0, take_gain: float = 1.0, take_seconds: float = 0.0, take_bar1_s: float = 0.0):
+        self.ring = Ring(ring_frames, CHANNELS, ring)
         self.paced = PacedOutput(rate, buffer, Path(capture) if capture else None)
         self.rate, self.latency_frames, self.bias = rate, int(latency), int(bias)
         self.audio_path, self.channel = audio, channel
@@ -322,6 +329,16 @@ class FileDuplex(Output):
         self.played = np.zeros(1 << 20, dtype=np.float32)  # the band's mix by engine frame, mod its length
         self.cap = 0  # capture frames given
         self.est = _Estimates(self.ring)
+        self.tone = 0.0  # the room tone's rms
+        self.rng = np.random.default_rng(0)
+        self.take_gain, self.take_seconds, self.take_bar1_s = float(take_gain), float(take_seconds), float(take_bar1_s)
+        self.room = None  # the band through the room (`Convolver`), and what it gave, by engine frame
+        if room_ir:
+            ir = load_ir(room_ir, rate) * 10 ** (room_gain_db / 20)
+            self.room = Convolver(ir, 128)
+            self.room_out = np.zeros(1 << 20, dtype=np.float32)
+            self.room_pos = 0  # engine frames given to the room
+            self.room_in: list[np.ndarray] = []
 
     @property
     def underruns(self) -> int:
@@ -351,6 +368,11 @@ class FileDuplex(Output):
     def open(self) -> None:
         self.y = (load_audio(self.audio_path, self.rate, self.channel) if self.audio_path
                   else np.zeros(0, dtype=np.float32))
+        head = self.y[: int(0.2 * self.rate)]
+        self.tone = float(np.sqrt(np.mean(head.astype(np.float64) ** 2))) if len(head) else 0.0
+        if self.take_seconds > 0:
+            self.y = self.y[: int((self.take_bar1_s + self.take_seconds) * self.rate)]
+        self.y = (self.y * self.take_gain).astype(np.float32)
         self.paced.open()
         h = self.ring.header
         h[H_PLAY_BUFFER] = h[H_CAP_BUFFER] = self.paced.buffer
@@ -364,6 +386,19 @@ class FileDuplex(Output):
             self.played[(w0 + k) % n] = 0.0
         idx = (w0 + gap + np.arange(len(frames))) % n
         self.played[idx] = mono
+        if self.room is not None:  # the room hears what was played, in order, silence in an underrun too
+            if gap:
+                self.room_in.append(np.zeros(gap, dtype=np.float32))
+            self.room_in.append(mono.astype(np.float32))
+            pend = np.concatenate(self.room_in)
+            B = self.room.block
+            k = len(pend) // B * B
+            for a in range(0, k, B):
+                out = self.room.push(pend[a: a + B])
+                j = (self.room_pos + np.arange(B)) % len(self.room_out)
+                self.room_out[j] = out
+                self.room_pos += B
+            self.room_in = [pend[k:]] if k < len(pend) else []
         if self.paced.started_at is None:
             return gap
         upto = int(self.paced.played()) + self.latency_frames
@@ -374,7 +409,9 @@ class FileDuplex(Output):
 
     def _give(self, a: int, b: int) -> None:
         c = np.arange(a, b)
-        block = np.zeros((b - a, 2), dtype=np.float32)
+        block = np.zeros((b - a, CHANNELS), dtype=np.float32)
+        if self.tone > 0:
+            block[:, 0] = self.tone * self.rng.standard_normal(b - a)
         start = self.ring.header[H_FILE_START]
         if not np.isnan(start):  # (before frame 0 too: the take's start already gone by)
             start = int(start)
@@ -384,6 +421,10 @@ class FileDuplex(Output):
         e = c - self.latency_frames
         ok = (e >= 0) & (e < self.paced.written) & (e > self.paced.written - len(self.played))
         block[ok, 1] = self.played[e[ok] % len(self.played)]
+        if self.room is not None:
+            ok = (e >= 0) & (e < self.room_pos) & (e > self.room_pos - len(self.room_out))
+            block[ok, 0] += self.room_out[e[ok] % len(self.room_out)]
+        block[:, 2] = block[:, 0]  # the room mic: here the same room as the input
         if len(block):
             self.ring.header[H_LEVEL] = max(self.ring.header[H_LEVEL], float(np.abs(block[:, 0]).max()))
         self.ring.write(block)
@@ -392,6 +433,34 @@ class FileDuplex(Output):
     def close(self) -> None:
         self.paced.close()
         self.ring.close()
+
+
+class Convolver:
+    """A long impulse response applied a block at a time (uniformly partitioned overlap-save): each block's output
+    is the response to everything given so far, with no delay of its own."""
+
+    def __init__(self, h: np.ndarray, block: int):
+        self.block = B = int(block)
+        P = max(1, int(np.ceil(len(h) / B)))
+        hp = np.zeros(P * B)
+        hp[: len(h)] = h
+        self.H = np.fft.rfft(np.concatenate([hp.reshape(P, B), np.zeros((P, B))], axis=1), axis=1)
+        self.X = np.zeros_like(self.H)
+        self.prev = np.zeros(B)
+
+    def push(self, x: np.ndarray) -> np.ndarray:
+        X0 = np.fft.rfft(np.concatenate([self.prev, x]))
+        self.prev = np.asarray(x, dtype=float).copy()
+        self.X = np.roll(self.X, 1, axis=0)
+        self.X[0] = X0
+        return np.fft.irfft(np.einsum("pk,pk->k", self.H, self.X))[self.block:].astype(np.float32)
+
+
+def load_ir(path: str, rate: int) -> np.ndarray:
+    p = Path(path).expanduser()
+    if p.suffix == ".npy":
+        return np.load(p).astype(np.float64)
+    return load_audio(str(p), rate).astype(np.float64)
 
 
 def load_audio(path: str, rate: int, channel: int | None = None) -> np.ndarray:

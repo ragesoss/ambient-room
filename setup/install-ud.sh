@@ -15,6 +15,12 @@ if [ ! -f /etc/ugly-duckling.toml ]; then
     sudo install -m 644 "$app/config/ud-pi.toml" /etc/ugly-duckling.toml
     echo "installed /etc/ugly-duckling.toml"
 fi
+# Settings added since: put into a config installed before them (2026-10-17: the room mic, captured always).
+if ! grep -q '^room *=' /etc/ugly-duckling.toml; then
+    sudo sed -i 's|^loopback = \[10, 11\]$|&\n# The room mic (input 4), captured whichever input the band follows: the room delay, and the recording.\nroom = [3]|' \
+        /etc/ugly-duckling.toml
+    grep -q '^room *=' /etc/ugly-duckling.toml && echo "added room = [3] to /etc/ugly-duckling.toml"
+fi
 
 unit=$(mktemp)
 trap 'rm -f "$unit"' EXIT
