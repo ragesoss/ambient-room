@@ -333,7 +333,7 @@ class Session:
             raise RuntimeError("counting in by voice needs the word recognizer (Vosk), which is not installed here")
         p = VoiceCountParams(beats_per_bar=self.tune.beats_per_bar, lead_s=self.cfg.lead_s)
         self.band = VoiceBand(RATE, words=self.words, params=p, chart=self.tune.chart, start=0,
-                              instrument=self.s.instrument, lead_s=self.cfg.lead_s)
+                              instrument=self.s.instrument, lead_s=self.cfg.lead_s, beat_params=self._beat_params())
         self.words = None  # the VoiceBand pushes its own words
         self.state = "listening for your count"
         if self.cfg.device.kind == "file":
@@ -526,20 +526,20 @@ class Session:
                 self.player.spb = 60.0 / e.bpm
                 self.state = "playing"
                 self.message = f"Counted in at {e.bpm:.0f} bpm" + (" (again)" if e.revision else "")
-            elif isinstance(e, Stop):
+            elif isinstance(e, Stop):  # "stop" said, or the player stopped playing (`VoiceBand.stop_with_player`)
                 self.engine.cut(int(e.decided_at * RATE - self.L - self.conv))
                 self.state = "listening for your count"
-                self.message = "You said stop: count it in again, or press Stop"
+                self.message = ("You stopped playing: the band stopped with you" if e.how == "player stopped"
+                                else "You said stop") + ". Count it in again, or press Stop"
                 self.last_cue = {}
             elif isinstance(e, Cue):
                 self._cues([e])
 
     def _cues(self, cues) -> None:
-        _, origin = self._live_band()
-        for c in cues:
+        for c in cues:  # in the stream's seconds (a VoiceBand's already shifted by its origin)
             if self.rec:
                 self.rec.log("cue", i=c.i, part=c.part, chord=c.play.chord, tone=c.play.tone, muted=c.play.muted,
-                             t=c.t + origin, beat_t=c.beat_t + origin, decided_at=c.decided_at + origin, bar=c.bar,
+                             t=c.t, beat_t=c.beat_t, decided_at=c.decided_at, bar=c.bar,
                              on=bool(self.s.parts.get(c.part, False)), heard_to=self.read / RATE)
             self.last_cue[c.part] = c
             if self.s.parts.get(c.part, False) and c.part in PARTS:
