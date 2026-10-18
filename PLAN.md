@@ -584,6 +584,24 @@ listening's numbers; here, the service.
 - Fixed on the way: two races at a stop (the status read the ring as it closed; the engine's last report read it
   after). `UD_TRANSCRIBE` points a run at a worktree of the transcription project.
 
+### Band sounds: a plan (2026-10-17)
+
+The player: "sketch out a plan for incrementally improving band sounds... which probably means making our own
+soundfonts and gradually improving them for all the instruments we care about (which is part of where the website
+will help)". The plan is `docs/sound-plan.md`. In short:
+
+- **Our own sample sets,** instrument by instrument, from sessions recorded for sampling through the 18i8, guided by
+  the exercise app (each take a short score that is also its answer key), and cut, labelled and checked by the
+  transcription pipeline's detectors.
+- **Each step ends with matched A/B renders** of the same notes, blind where possible, with a short form, and the
+  player decides. Loudness, attack timing, spectrum and the pipeline's round trip are measured beside the ear.
+- **The first steps:** the bass's missing notes and the guitar's boom-chuck from the D-1; then the banjo's and the
+  mandolin's chops, with round robins in the engine; then the dobro by string (the dobro-soundfont session).
+- **Stay on FluidSynth,** with round robins, strings and articulations chosen by the engine, and fonts written from a
+  neutral sample map, so SFZ (sfizz) stays open if the ear asks for it.
+- **Other players' instruments** through the website, under one stated open licence for the project's fonts;
+  GeneralUser GS and FluidR3 keep their own terms. Twelve open questions for the player at its end.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.
