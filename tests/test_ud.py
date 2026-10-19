@@ -270,6 +270,48 @@ def test_the_count_in_is_two_bars_from_150_bpm_or_as_chosen():
     assert count_in_plan(cfg, 170, 4, count="voice")["kind"] == "voice"
 
 
+@needs_band
+def test_lead_or_follow_is_offered_and_taken_at_start():
+    """The page's steps, the default the band as before; a step's id or a number from 0 to 1 taken, anything else
+    refused; the setting in the session's settings."""
+    from fastapi.testclient import TestClient
+    from ugly_duckling.server import create_app
+    from ugly_duckling.session import FOLLOW_STEPS
+    cfg = load_config(DESKTOP)
+    with TestClient(create_app(cfg)) as c:
+        o = c.get("/api/options").json()["follow"]
+        assert o["default"] == 1.0 and [s["id"] for s in o["steps"]] == ["hold", "gentle", "lead"]
+        assert [s["value"] for s in o["steps"]] == [s["value"] for s in FOLLOW_STEPS]
+        assert [s["value"] for s in o["steps"]][0] == 0.0 and [s["value"] for s in o["steps"]][-1] == 1.0
+        for bad in (1.5, -0.1, "steady", None):
+            r = c.post("/api/start", json={"tune": "red-wing", "follow": bad})
+            assert r.status_code == 400 and "follow" in r.json()["detail"], bad
+        for given, want in ((None, 1.0), ("hold", 0.0), (0.25, 0.25), ("lead", 1.0)):
+            body = {"tune": "red-wing", "listen_stop": False} | ({} if given is None else {"follow": given})
+            r = c.post("/api/start", json=body)
+            assert r.status_code == 200, r.text
+            assert r.json()["settings"]["follow"] == want, given
+            c.post("/api/stop")
+
+
+@needs_band
+def test_the_beat_params_carry_lead_or_follow_only_when_not_the_default():
+    """The follower gets the preset with the band's stop rule, and `follow` only when it is not the default (so an
+    older transcription project runs the default)."""
+    from dataclasses import replace
+
+    from transcribe.livebeat import PRESETS
+    from ugly_duckling.server import Band
+    from ugly_duckling.session import Session, Settings
+    cfg = load_config(DESKTOP)
+    b = Band(cfg)
+    tune, inp = b.tunes["red-wing"], b.inputs["take"]
+    lead = Session(cfg, tune, inp, Settings("red-wing", 100.0, "take", "dobro"), b.voicing)._beat_params()
+    assert lead == replace(PRESETS["dobro"], stop_beats=cfg.stop_beats, noise_gate_db=cfg.noise_gate_db)
+    hold = Session(cfg, tune, inp, Settings("red-wing", 100.0, "take", "dobro", follow=0.0), b.voicing)._beat_params()
+    assert hold == replace(lead, follow=0.0)
+
+
 def test_old_sessions_are_pruned_by_count_and_size(tmp_path):
     from ugly_duckling.record import prune
     for k in range(5):
