@@ -535,10 +535,7 @@ class Session:
             if echo is not None:
                 self.pre_echo.append(echo.copy())
             return
-        if self.s.count == "voice":  # no estimate for a spoken count's band yet: with it the chase of a quick
-            out = self.band.push(x)    # speed-up failed (Big Sciota replayed: 1.26 s behind, 15 ms without)
-        else:
-            out = self.band.push(x, echo=echo)
+        out = self.band.push(x, echo=echo)  # a VoiceBand gives the estimate to each band it starts
         if self.s.count == "voice":
             self._voice_events(out)
         else:
