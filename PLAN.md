@@ -620,9 +620,10 @@ design and the numbers); here, the service and the page.
   `held`; the start event lists the catalog.
 - **No device** (the free guitar take, G C G D, counted in 4 at 103 bpm): the tune named on beat 16 of the playing, 10.0
   s after the last click; every cue on time, none late or dropped (`tests/test_ud.py`).
-- **The afternoon's sessions replayed** in the transcription project as if no tune had been chosen: Cherokee on the bass
-  (the band's count) named on bar 9, Red Wing on the dobro (a spoken count) on bar 17, Big Sciota on bar 22 of 24; the
-  right tune each time, and from there the chords the same as the band given the tune.
+- **The afternoon's sessions replayed** in the transcription project as if no tune had been chosen, as the band runs
+  now (a spoken count's band without the echo estimate): Cherokee on the bass (the band's count) named on bar 9, Red Wing
+  on the dobro (a spoken count) on bar 23, Big Sciota on bar 17 of 24; the right tune each time, and from there the
+  chords the same as the band given the tune.
 - Not deployed.
 
 ### Band sounds: a plan (2026-10-17)
