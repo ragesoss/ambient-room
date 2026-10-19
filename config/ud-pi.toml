@@ -2,8 +2,10 @@
 # setup/install-ud.sh; later edits there are kept.
 
 # The other apps on the control unit: before opening the 18i8 the band asks each to let go (ambient/peers.py).
-# 8000 the practice recorder, 8001 the ambient synth, 8002 the exercise app, 8003 the chord app.
-peers = ["http://127.0.0.1:8000", "http://127.0.0.1:8001", "http://127.0.0.1:8002", "http://127.0.0.1:8003"]
+# 8000 the practice recorder, 8001 the ambient synth, 8002 the exercise app, 8003 the chord app, 8006 the transcribe
+# app (2026-10-19).
+peers = ["http://127.0.0.1:8000", "http://127.0.0.1:8001", "http://127.0.0.1:8002", "http://127.0.0.1:8003",
+         "http://127.0.0.1:8006"]
 
 [web]
 host = "0.0.0.0"

@@ -515,7 +515,8 @@ The live band as a program of its own (the player: not part of the practice app)
   stopping. The volume is capped at +12 dB over the band's own level (-33 dBFS gated rms at 0 dB), which puts it
   at about -21 dBFS, the level takes play at; every sample is clipped at -1 dBFS whatever the volume. A stop (the
   page, a yield, an error, "stop", or 10 minutes with nothing played): nothing new starts, what sounds rings
-  0.6 s, a 0.2 s fade, the device closed (about 1 s in all). The other apps list 8004 among their peers.
+  0.6 s, a 0.2 s fade, the device closed (about 1 s in all). The other apps list 8004 among their peers. Since
+  2026-10-19 the band and the ambient synth also ask piano-recorder's transcribe app (8006), which records.
 - **No device** (`[device] kind = "file"`, `tools/ud-desktop`, `tools/ud_run.py`): the band paced as a sound
   card plays it, nothing heard, and a take given as the capture, its bar 1 on the beat after the count-in; the
   loopback is the band's mix 300 frames later, and the estimate is 37 frames off on purpose. The whole loop runs:

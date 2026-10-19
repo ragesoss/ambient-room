@@ -3,8 +3,9 @@
 
 # The other programs on the Pi that play through the same speakers: only
 # one plays at a time (ambient/peers.py). 8000: piano-recorder's practice
-# recorder; 8002: its exercise app (2026-10-13); 8004: the Ugly Duckling String Band (2026-10-17).
-peers = ["http://127.0.0.1:8000", "http://127.0.0.1:8002", "http://127.0.0.1:8004"]
+# recorder; 8002: its exercise app (2026-10-13); 8004: the Ugly Duckling String Band (2026-10-17); 8006: its
+# transcribe app, which records (2026-10-19).
+peers = ["http://127.0.0.1:8000", "http://127.0.0.1:8002", "http://127.0.0.1:8004", "http://127.0.0.1:8006"]
 
 [output]
 engine = "csound"
