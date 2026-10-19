@@ -503,10 +503,7 @@ class Session:
             if echo is not None:
                 self.pre_echo.append(echo.copy())
             return
-        if self.s.count == "voice":
-            out = self.band.push(x)
-        else:
-            out = self.band.push(x, echo=echo)
+        out = self.band.push(x, echo=echo)  # a VoiceBand gives the estimate to each band it starts
         if self.s.count == "voice":
             self._voice_events(out)
         else:
