@@ -21,7 +21,8 @@ What happens in between (in a thread of its own; the device and the band's sound
    count, stops on "stop", and starts again on the next count.
 3. **Listening.** The capture is read from the ring in `in_block` frames and pushed to the band; each part's
    play (`band.Cue`) goes to the band player as it comes, unless that part is off. With voice on, "stop" stops
-   the band (a click start: the whole run).
+   the band (a click start: the whole run). How much the band takes the player's tempo is the player's lead or
+   follow (`Settings.follow`, `FOLLOW_STEPS`): from the count's tempo held to the player leading.
    **No tune chosen** ("Any of my tunes", `catalog`): the band starts with no chart and plays what it hears; once
    it is sure which of the tunes is played, it takes that tune's chart at the place heard, and lets it go again if
    it stops fitting (`transcribe.band.TuneFinder`). The status names the tune followed.
@@ -61,6 +62,14 @@ ROOM_PEAK_RATIO = 8.0  # its peak this many times the response's median magnitud
 ROOM_MIN_REMOVED_DB = 1.0  # ... and this much of the input removed over the last 2 s, or it is marked unreliable
 PARTS = ("bass", "chop", "comp")
 PART_NAMES = {"bass": "Bass", "chop": "Chop", "comp": "Chords"}
+# Lead or follow: how much of the player's tempo the band's clock takes (the transcription project's
+# `livebeat.LiveBeatParams.follow`; its `docs/band-that-follows.md`, "Lead or follow"). "lead" is the band as before.
+FOLLOW_STEPS = (
+    {"id": "hold", "value": 0.0, "name": "The band holds steady", "note": "keeps the tempo it starts at"},
+    {"id": "gentle", "value": 0.25, "name": "The band follows gently", "note": "comes along with a change you keep up"},
+    {"id": "lead", "value": 1.0, "name": "You lead", "note": "the band follows you, as a band would"},
+)
+FOLLOW_DEFAULT = 1.0
 
 
 class Busy(Exception):
@@ -78,6 +87,7 @@ class Settings:
     count: str = "band"  # "band": the band clicks it in (`count_in_plan`); "voice": the player counts it in
     listen_stop: bool = True  # with words: "stop" stops the band
     count_bars: str = "auto"  # the band's count-in: "1", "2" bars, or "auto" (two at or above `two_bar_bpm`)
+    follow: float = FOLLOW_DEFAULT  # lead or follow (`FOLLOW_STEPS`): 1 the player leads, 0 the band holds the tempo
 
 
 def count_in_plan(cfg: Config, bpm: float, beats_per_bar: int, count: str = "band", bars: str = "auto") -> dict:
@@ -383,11 +393,14 @@ class Session:
         return True
 
     def _beat_params(self):
-        """The beat follower's preset for the instrument, with the band's stop rule (`stop_beats`)."""
+        """The beat follower's preset for the instrument, with the band's stop rule (`stop_beats`) and the player's
+        lead or follow (`follow`; passed only when it is not the default, so that an older transcription project
+        still runs the default)."""
         from dataclasses import replace
         from transcribe.livebeat import PRESETS
+        lead = {} if self.s.follow == FOLLOW_DEFAULT else {"follow": self.s.follow}
         return replace(PRESETS[self.s.instrument], stop_beats=self.cfg.stop_beats,
-                       noise_gate_db=self.cfg.noise_gate_db)
+                       noise_gate_db=self.cfg.noise_gate_db, **lead)
 
     def _band_tunes(self):
         """No tune chosen: the tunes as the band finds them (`transcribe.band.Tune`); else None."""
@@ -522,7 +535,10 @@ class Session:
             if echo is not None:
                 self.pre_echo.append(echo.copy())
             return
-        out = self.band.push(x, echo=echo)  # a VoiceBand gives the estimate to each band it starts
+        if self.s.count == "voice":  # no estimate for a spoken count's band yet: with it the chase of a quick
+            out = self.band.push(x)    # speed-up failed (Big Sciota replayed: 1.26 s behind, 15 ms without)
+        else:
+            out = self.band.push(x, echo=echo)
         if self.s.count == "voice":
             self._voice_events(out)
         else:

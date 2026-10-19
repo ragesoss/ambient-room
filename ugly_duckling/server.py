@@ -21,7 +21,8 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from .config import Config, load_config
-from .session import PARTS, PART_NAMES, Busy, Session, Settings, count_in_plan, selfcheck
+from .session import (FOLLOW_DEFAULT, FOLLOW_STEPS, PARTS, PART_NAMES, Busy, Session, Settings, count_in_plan,
+                      selfcheck)
 from .tunes import Tune, load_tunes
 
 STATIC = Path(__file__).parent / "static"
@@ -83,9 +84,16 @@ class Band:
                 "volume": {"default": c.volume_db, "min": c.min_volume_db, "max": c.max_volume_db},
                 "voice": {"available": self.voice_why is None, "why": self.voice_why},
                 "count_in": {"two_bar_bpm": c.two_bar_bpm, "bars": ["auto", "1", "2"]},
-                "any": {"available": bool(self.tunes), "bpm": round(ANY_BPM),
+                "follow": {"default": FOLLOW_DEFAULT, "steps": list(FOLLOW_STEPS)},
+                "any": {"available": bool(self.tunes) and self._can_find(), "bpm": round(ANY_BPM),
                         "meters": [m for m in (4, 3) if any(self._fits(t, m) for t in self.tunes.values())]},
                 "device": c.device.kind}
+
+    @staticmethod
+    def _can_find() -> bool:
+        """The transcription project here finds a tune by ear (`transcribe.band.TuneFinder`)."""
+        from transcribe import band as transcribe_band
+        return hasattr(transcribe_band, "TuneFinder")
 
     @staticmethod
     def _fits(tune: Tune, beats_per_bar: int) -> bool:
@@ -129,6 +137,8 @@ class Band:
             if tune is None:
                 raise ValueError(f"no tune {body.get('tune')!r}")
             catalog = [t for t in self.tunes.values() if self._fits(t, tune.beats_per_bar)] if tune.id in ANY else None
+            if catalog is not None and not self._can_find():
+                raise ValueError("the transcription project here cannot find a tune by ear (update it)")
             inp = self.inputs.get(body.get("input") or (self.cfg.inputs[0].id if self.cfg.inputs else ""))
             if inp is None:
                 raise ValueError(f"no input {body.get('input')!r}")
@@ -150,13 +160,31 @@ class Band:
             bars = str(body.get("count_bars", "auto"))
             if bars not in ("auto", "1", "2"):
                 raise ValueError("count_bars: auto, 1 or 2")
-            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars)
+            follow = self._follow(body.get("follow", FOLLOW_DEFAULT))
+            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars, follow)
             words = self.model() if (count == "voice" or listen_stop) else None
             sess = Session(self.cfg, tune, inp, s, self.voicing, words, on_end=self._ended,
                            echo_state=self.echo_state(inp.id), catalog=catalog)
             sess.start()  # raises Busy
             self.session = sess
             return self.status()
+
+    @staticmethod
+    def _follow(value) -> float:
+        """Lead or follow from the start request: a step's id (`FOLLOW_STEPS`) or a number from 0 (the band holds the
+        tempo) to 1 (the player leads)."""
+        step = next((s for s in FOLLOW_STEPS if s["id"] == value), None)
+        try:
+            follow = float(step["value"] if step else value)
+        except (TypeError, ValueError):
+            raise ValueError("follow: hold, gentle, lead, or 0-1")
+        if not 0.0 <= follow <= 1.0:
+            raise ValueError("follow: 0 (the band holds the tempo) to 1 (you lead)")
+        if follow != FOLLOW_DEFAULT:
+            from transcribe.livebeat import LiveBeatParams
+            if "follow" not in LiveBeatParams.__dataclass_fields__:
+                raise ValueError("the transcription project here has no lead-or-follow setting (update it)")
+        return follow
 
     def _ended(self, sess: Session) -> None:
         self.last = sess
