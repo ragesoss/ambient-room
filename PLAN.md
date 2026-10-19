@@ -584,6 +584,32 @@ listening's numbers; here, the service.
 - Fixed on the way: two races at a stop (the status read the ring as it closed; the engine's last report read it
   after). `UD_TRANSCRIBE` points a run at a worktree of the transcription project.
 
+### Any of my tunes: the band finds the tune (2026-10-18)
+
+A start with no tune chosen. The listening and the deciding are the transcription project's (`transcribe.band.TuneFinder`;
+its `docs/band-that-follows.md`, "No tune chosen", and `docs/findings.md`, "The band with no tune chosen", have the
+design and the numbers); here, the service and the page.
+
+- **The page**: "Any of my tunes" after the tunes ("it listens, then follows the chart"), with "In 4" and "In 3 (a
+  waltz)" under it when a tune in 3 is loaded. The tempo is where the count starts (100 bpm by default); the count works
+  as for a tune: the band's clicks at that tempo, or the player's spoken count. Playing, a line under the title says
+  "Listening for which tune" (with "maybe Red Wing (55%)" once the matcher names one at 30% or more), then "Found by ear:
+  following its chart, in G", and the title line becomes the tune's name. Picking a tune works as before.
+- **The service**: the tune ids `any` (counted in 4) and `any-3` (in 3) give the session a stand-in tune with no chart,
+  and the config's tunes whose meter fits as its `catalog` (a tune in 2/4 fits a count of 4). The band
+  (`LiveBand`, or `VoiceBand` for a spoken count) gets them as `tunes`: it plays the chords it hears (the chop and the
+  bass), and once it has named one tune at 0.7 or more at two bar ends running it takes that tune's chart at the place
+  heard: the chop, bass and chords from the next bar. If the chart's chords stop fitting those heard, it lets the chart
+  go and listens again. With a count, beat 1 is the tune's downbeat. The status has `find` (the tune followed, its key,
+  and the tune named with its confidence); each decision in the session log has `tune`, `named`, `named_conf` and
+  `held`; the start event lists the catalog.
+- **No device** (the free guitar take, G C G D, counted in 4 at 103 bpm): the tune named on beat 16 of the playing, 10.0
+  s after the last click; every cue on time, none late or dropped (`tests/test_ud.py`).
+- **The afternoon's sessions replayed** in the transcription project as if no tune had been chosen: Cherokee on the bass
+  (the band's count) named on bar 9, Red Wing on the dobro (a spoken count) on bar 17, Big Sciota on bar 22 of 24; the
+  right tune each time, and from there the chords the same as the band given the tune.
+- Not deployed.
+
 ### Band sounds: a plan (2026-10-17)
 
 The player: "sketch out a plan for incrementally improving band sounds... which probably means making our own

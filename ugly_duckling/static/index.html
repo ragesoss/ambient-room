@@ -88,6 +88,7 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
     <div class="card">
       <div class="state" id="lstate">Starting</div>
       <div class="sub" id="ltune"></div>
+      <div class="sub" id="lfind" hidden></div>
       <div class="dots" id="dots"></div>
       <div class="chord" id="chord"></div>
       <div class="sub" id="cwhy"></div>
@@ -112,6 +113,7 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
     <div class="card">
       <h2>Tune</h2>
       <div class="chips" id="tunes"></div>
+      <div class="chips" id="meters" style="margin-top:10px" hidden></div>
       <div class="hint" id="tunehint"></div>
     </div>
     <div class="card">
@@ -171,7 +173,15 @@ function chip(label, small, pressed, onclick) {
   if (small) { const s = document.createElement("small"); s.textContent = small; b.append(s); }
   b.onclick = onclick; return b;
 }
-function tune() { return opts.tunes.find(t => t.id === pick.tune) || opts.tunes[0]; }
+function tune() {
+  if (pick.tune === "any" && opts.any && opts.any.available) return anyTune();
+  return opts.tunes.find(t => t.id === pick.tune) || opts.tunes[0];
+}
+// no tune chosen: the band listens, and takes the chart of the tune it hears (the service's "any", or "any-3" in 3)
+function anyTune() {
+  const bpb = pick.any_meter === 3 && opts.any.meters.includes(3) ? 3 : 4;
+  return { id: bpb === 3 ? "any-3" : "any", name: "Any of my tunes", beats_per_bar: bpb, bpm: opts.any.bpm, chords: [], any: true };
+}
 function input() { return opts.inputs.find(i => i.id === pick.input) || opts.inputs[0]; }
 // the count-in Start will give (as the service decides it, `count_in_plan`)
 function countPlan(t, bpm) {
@@ -186,13 +196,17 @@ function fmtDb(v) { return (v > 0 ? "+" : "") + Math.round(v) + " dB"; }
 
 function renderSetup() {
   const t = tune(), inp = input();
-  pick.tune = t.id; pick.input = inp && inp.id;
+  pick.tune = t.any ? "any" : t.id; pick.input = inp && inp.id;
   const tb = $("tunes"); tb.innerHTML = "";
   for (const x of opts.tunes) tb.append(chip(x.name, `${x.beats_per_bar}/4 · ${x.bars} bars · ${x.bpm} bpm`, x.id === t.id, () => { pick.tune = x.id; save(); renderSetup(); }));
-  $("tunehint").textContent = "Starts: " + t.chords.slice(0, 8).join(" ") + (t.chords.length > 8 ? " …" : "");
+  if (opts.any && opts.any.available) tb.append(chip("Any of my tunes", "it listens, then follows the chart", !!t.any, () => { pick.tune = "any"; save(); renderSetup(); }));
+  const mb = $("meters"); mb.innerHTML = ""; mb.hidden = !t.any || opts.any.meters.length < 2;
+  if (t.any) for (const m of opts.any.meters) mb.append(chip(m === 3 ? "In 3 (a waltz)" : "In 4", null, t.beats_per_bar === m, () => { pick.any_meter = m; save(); renderSetup(); }));
+  $("tunehint").textContent = t.any ? "The band plays the chords it hears. Once it is sure which of your tunes you are playing, it follows that tune's chart, and shows its name."
+    : "Starts: " + t.chords.slice(0, 8).join(" ") + (t.chords.length > 8 ? " …" : "");
   const bpm = pick.bpm[t.id] || t.bpm;
   $("bpm").value = bpm; $("bpmn").textContent = bpm + " bpm";
-  $("bpmhint").textContent = bpm === t.bpm ? "Its takes' tempo." : `Its takes: ${t.bpm} bpm.`;
+  $("bpmhint").textContent = t.any ? "Where the count starts; the band follows your tempo." : bpm === t.bpm ? "Its takes' tempo." : `Its takes: ${t.bpm} bpm.`;
   for (const b of $("counts").children) {
     b.setAttribute("aria-pressed", b.dataset.count === pick.count ? "true" : "false");
     if (b.dataset.count === "voice") b.disabled = !opts.voice.available;
@@ -263,6 +277,9 @@ function render(s) {
   }
   $("lstate").textContent = STATE[s.state] || s.state;
   $("ltune").textContent = `${s.tune} · ${s.count ? s.count.bpm : s.bpm} bpm · ${s.input}`;
+  const f = s.find;
+  $("lfind").hidden = !f;
+  if (f) $("lfind").textContent = f.found ? `Found by ear: following its chart, in ${f.key}` : "Listening for which tune" + (f.named_title && f.sure >= 0.3 ? `: maybe ${f.named_title} (${Math.round(100 * f.sure)}%)` : "");
   const bpb = s.count ? s.count.beats_per_bar : s.beats_per_bar, b = s.beat;
   const dots = $("dots");
   if (dots.children.length !== bpb) { dots.innerHTML = ""; for (let i = 1; i <= bpb; i++) { const d = document.createElement("span"); d.className = "dot" + (i === 1 ? " one" : ""); dots.append(d); } }

@@ -22,6 +22,9 @@ What happens in between (in a thread of its own; the device and the band's sound
 3. **Listening.** The capture is read from the ring in `in_block` frames and pushed to the band; each part's
    play (`band.Cue`) goes to the band player as it comes, unless that part is off. With voice on, "stop" stops
    the band (a click start: the whole run).
+   **No tune chosen** ("Any of my tunes", `catalog`): the band starts with no chart and plays what it hears; once
+   it is sure which of the tunes is played, it takes that tune's chart at the place heard, and lets it go again if
+   it stops fitting (`transcribe.band.TuneFinder`). The status names the tune followed.
 4. **Stop** (the page, a peer's `/api/yield`, an error, the voice, or `idle_minutes` with nothing played): the
    band decides nothing more; no note starts after now; what is sounding rings out for `RING_S`, then everything
    fades out over `FADE_S`, and the device closes.
@@ -137,8 +140,9 @@ def db(x: float) -> float | None:
 
 class Session:
     def __init__(self, cfg: Config, tune: Tune, inp: Input, settings: Settings, voicing, words_model=None,
-                 on_end=None, echo_state: dict | None = None):
+                 on_end=None, echo_state: dict | None = None, catalog: list[Tune] | None = None):
         self.cfg, self.tune, self.inp, self.s = cfg, tune, inp, settings
+        self.catalog = catalog  # no tune chosen (`tune` the server's stand-in): the tunes the band may find
         self.voicing = voicing
         self.words_model = words_model  # a Vosk Model, or None (no voice)
         self.on_end = on_end
@@ -253,6 +257,7 @@ class Session:
                      "beats_per_bar": self.tune.beats_per_bar, "chart": [list(x) for x in self.tune.chart]},
                      input={"id": self.inp.id, "name": self.inp.name, "channels": self.inp.channels,
                             "echo": self.inp.echo} if self.inp else None,
+                     catalog=[t.id for t in self.catalog] if self.catalog is not None else None,
                      count_in=self.plan, device=asdict(c.device),
                      band={"lead_s": c.lead_s, "in_block": c.in_block, "echo": c.echo, "echo_taps_s": c.echo_taps_s,
                            "stop_beats": c.stop_beats, "noise_gate_db": c.noise_gate_db,
@@ -277,11 +282,14 @@ class Session:
         if d.file_path:
             self._file_bar1 = d.file_bar1_s
             return str(Path(d.file_path).expanduser()), d.file_channel
-        take = next((t for t in self.tune.takes if t.file == d.file_take), None)
+        tune = self.tune
+        if self.catalog is not None:  # no tune chosen: the config's tune plays
+            tune = next((t for t in self.catalog if t.id == d.file_tune), None) or (self.catalog or [tune])[0]
+        take = next((t for t in tune.takes if t.file == d.file_take), None)
         if take is None:
-            raise Busy(f"no take {d.file_take!r} in {self.tune.folder}")
+            raise Busy(f"no take {d.file_take!r} in {tune.folder}")
         self._file_bar1 = take.bar1_s
-        return str(self.tune.folder / take.file), d.file_channel
+        return str(tune.folder / take.file), d.file_channel
 
     def _run(self) -> None:
         try:
@@ -332,8 +340,9 @@ class Session:
         if self.words is None:
             raise RuntimeError("counting in by voice needs the word recognizer (Vosk), which is not installed here")
         p = VoiceCountParams(beats_per_bar=self.tune.beats_per_bar, lead_s=self.cfg.lead_s)
-        self.band = VoiceBand(RATE, words=self.words, params=p, chart=self.tune.chart, start=0,
-                              instrument=self.s.instrument, lead_s=self.cfg.lead_s, beat_params=self._beat_params())
+        self.band = VoiceBand(RATE, words=self.words, params=p, chart=self.tune.chart or None, start=0,
+                              instrument=self.s.instrument, lead_s=self.cfg.lead_s, beat_params=self._beat_params(),
+                              tunes=self._band_tunes())
         self.words = None  # the VoiceBand pushes its own words
         self.state = "listening for your count"
         if self.cfg.device.kind == "file":
@@ -359,9 +368,10 @@ class Session:
         self.count_in = [(f + self.L + self.conv) / RATE for f in self.clicks]
         spb = 60.0 / self.s.bpm
         from transcribe.liveband import LiveBand
-        self.band = LiveBand(RATE, self.s.bpm, self.tune.chart, self.tune.beats_per_bar, count_in=self.count_in,
-                             start=0, instrument=self.s.instrument, lead_s=self.cfg.lead_s,
-                             play_from=self.count_in[-1] + 0.5 * spb, beat_params=self._beat_params())
+        self.band = LiveBand(RATE, self.s.bpm, self.tune.chart or None, self.tune.beats_per_bar,
+                             count_in=self.count_in, start=0, instrument=self.s.instrument, lead_s=self.cfg.lead_s,
+                             play_from=self.count_in[-1] + 0.5 * spb, beat_params=self._beat_params(),
+                             tunes=self._band_tunes())
         if self.rec:
             self.rec.log("clock", L_estimate=self.L_est_ref, L_measured=self.L_measured, L=self.L, conv=self.conv,
                          count_in=self.count_in)
@@ -378,6 +388,13 @@ class Session:
         from transcribe.livebeat import PRESETS
         return replace(PRESETS[self.s.instrument], stop_beats=self.cfg.stop_beats,
                        noise_gate_db=self.cfg.noise_gate_db)
+
+    def _band_tunes(self):
+        """No tune chosen: the tunes as the band finds them (`transcribe.band.Tune`); else None."""
+        if self.catalog is None:
+            return None
+        from transcribe.band import Tune as BandTune
+        return [BandTune(t.id, t.name, tuple(tuple(c) for c in t.chart), t.beats_per_bar) for t in self.catalog]
 
     def _listen(self) -> None:
         ring, h, blk = self.ring, self.ring.header, self.cfg.in_block
@@ -483,7 +500,9 @@ class Session:
                          heard_before=lg.heard_before, heard_conf=lg.heard_conf, react=lg.react,
                          react_conf=lg.react_conf, open=lg.open, decided_at=lg.decided_at + origin,
                          plays={k: {"chord": v.chord, "tone": v.tone, "muted": v.muted, "offset": v.offset}
-                                for k, v in lg.plays.items()})
+                                for k, v in lg.plays.items()},
+                         **({"tune": lg.tune, "named": lg.named, "named_conf": lg.named_conf, "held": lg.held}
+                            if self.catalog is not None else {}))
             self.logged["heard"] += 1
 
     def _follow_clock(self, h) -> None:
@@ -621,6 +640,10 @@ class Session:
                         "key": chord_name(lg.key), "bpm": round(band.beats[min(lg.i, len(band.beats) - 1)].bpm)
                         if band.beats else None}
         out["beat"] = beat
+        if self.catalog is not None:
+            out["find"] = self.found_status(band)
+            if out["find"]["found"]:
+                out["tune"] = out["find"]["title"]
         parts = {}
         for p in PARTS:
             c = self.last_cue.get(p)
@@ -638,6 +661,22 @@ class Session:
         out["levels"] = self.levels[-1] if self.levels else None
         out["recording"] = ({"on": True, "folder": self.rec.path.name, "minutes": round(self.rec.frames / RATE / 60, 1)}
                             if self.rec and self.rec.on else {"on": False, "why": self.rec.why if self.rec else ""})
+        return out
+
+    def found_status(self, band) -> dict:
+        """No tune chosen: the tune whose chart the band follows (None while it listens), and the one the matcher
+        names, how surely."""
+        found = getattr(band, "found", None) if band is not None else None
+        named = getattr(band, "named", None) if band is not None else None
+        titles = {t.id: t.name for t in self.catalog or []}
+        out = {"found": None, "title": None, "key": None, "named": None, "named_title": None, "sure": None}
+        if found is not None:
+            from transcribe.livechords import chart_key
+            k = chart_key(found.chart)
+            out.update(found=found.tune.id, title=titles.get(found.tune.id, found.tune.title),
+                       key=chord_name((k[0], "min" if k[1] == "minor" else "maj")))
+        if named is not None:
+            out.update(named=named.id, named_title=titles.get(named.id, named.title), sure=round(named.confidence, 2))
         return out
 
     def timing(self) -> dict:

@@ -22,10 +22,13 @@ from fastapi.responses import FileResponse
 
 from .config import Config, load_config
 from .session import PARTS, PART_NAMES, Busy, Session, Settings, count_in_plan, selfcheck
-from .tunes import load_tunes
+from .tunes import Tune, load_tunes
 
 STATIC = Path(__file__).parent / "static"
 INSTRUMENTS = {"guitar": "Guitar", "dobro": "Dobro", "bass": "Bass"}
+# no tune chosen: the band finds which of the tunes is played (`Session`'s `catalog`), counted in 4 or in 3
+ANY = {"any": 4, "any-3": 3}
+ANY_BPM = 100.0  # its default tempo
 
 
 class Band:
@@ -80,11 +83,24 @@ class Band:
                 "volume": {"default": c.volume_db, "min": c.min_volume_db, "max": c.max_volume_db},
                 "voice": {"available": self.voice_why is None, "why": self.voice_why},
                 "count_in": {"two_bar_bpm": c.two_bar_bpm, "bars": ["auto", "1", "2"]},
+                "any": {"available": bool(self.tunes), "bpm": round(ANY_BPM),
+                        "meters": [m for m in (4, 3) if any(self._fits(t, m) for t in self.tunes.values())]},
                 "device": c.device.kind}
+
+    @staticmethod
+    def _fits(tune: Tune, beats_per_bar: int) -> bool:
+        """A tune the band can find counted in this meter (one in 2/4 in a count of 4: `transcribe.band.compatible`)."""
+        return tune.beats_per_bar == beats_per_bar or {tune.beats_per_bar, beats_per_bar} == {2, 4}
+
+    def tune_for(self, tune_id: str) -> Tune | None:
+        """A tune by id, or for no tune chosen ("any", "any-3") a stand-in with no chart, counted in its meter."""
+        if tune_id in ANY and self.tunes:
+            return Tune(tune_id, "Any of my tunes", Path(), [], ANY[tune_id], ANY_BPM)
+        return self.tunes.get(tune_id)
 
     def plan(self, tune_id: str, bpm: float | None, count: str = "band", bars: str = "auto") -> dict:
         """The count-in a Start with these settings would give (for the page before Start)."""
-        tune = self.tunes.get(tune_id)
+        tune = self.tune_for(tune_id)
         if tune is None:
             raise ValueError(f"no tune {tune_id!r}")
         return count_in_plan(self.cfg, float(bpm or tune.bpm), tune.beats_per_bar, count, bars)
@@ -109,9 +125,10 @@ class Band:
                 raise Busy("the band is already playing: stop it first")
             if self.checking:
                 raise Busy("a self-check is using the device")
-            tune = self.tunes.get(body.get("tune", ""))
+            tune = self.tune_for(body.get("tune", ""))
             if tune is None:
                 raise ValueError(f"no tune {body.get('tune')!r}")
+            catalog = [t for t in self.tunes.values() if self._fits(t, tune.beats_per_bar)] if tune.id in ANY else None
             inp = self.inputs.get(body.get("input") or (self.cfg.inputs[0].id if self.cfg.inputs else ""))
             if inp is None:
                 raise ValueError(f"no input {body.get('input')!r}")
@@ -136,7 +153,7 @@ class Band:
             s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars)
             words = self.model() if (count == "voice" or listen_stop) else None
             sess = Session(self.cfg, tune, inp, s, self.voicing, words, on_end=self._ended,
-                           echo_state=self.echo_state(inp.id))
+                           echo_state=self.echo_state(inp.id), catalog=catalog)
             sess.start()  # raises Busy
             self.session = sess
             return self.status()

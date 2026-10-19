@@ -312,3 +312,42 @@ def test_a_session_is_recorded_and_the_band_plays_from_beat_one(tmp_path):
     evs = [_json.loads(x)["ev"] for x in open(d / "session.jsonl")]
     for k in ("start", "count_in", "clock", "beat", "cue", "decision", "level", "stop", "end"):
         assert k in evs, k
+
+
+# ------------------------------------------------------------------------------------------------- 2026-10-18
+
+@pytest.mark.skipif(not transcription_here(), reason="needs the transcription project")
+def test_any_tune_is_offered_in_the_meters_the_tunes_have():
+    from ugly_duckling.server import Band
+    band = Band(load_config(DESKTOP))
+    o = band.options()
+    assert o["any"]["available"] and o["any"]["meters"] == [4, 3]  # the waltz in 3; the 2/4 take in a count of 4
+    assert band.plan("any", 100)["clicks"] == 4 and band.plan("any-3", 100)["clicks"] == 3
+    assert band.tune_for("any").chart == [] and band.tune_for("red-wing").chart
+
+
+@needs_band
+def test_with_no_tune_chosen_the_band_names_the_tune_and_follows_its_chart():
+    """The free guitar take (G C G D, 2/4) with no tune chosen, counted in 4: the band plays what it hears, then names
+    the tune (the status shows its title) and plays its chart from the place heard."""
+    from ugly_duckling.server import Band
+    cfg = load_config(DESKTOP)
+    cfg.device.file_tune = "g-c-g-d"
+    band = Band(cfg)
+    band.start({"tune": "any", "bpm": 103, "count": "band", "listen_stop": False, "instrument": "guitar"})
+    s = band.session
+    try:
+        assert duplex.wait_for(lambda: s.state == "playing", 6.0, 0.05)
+        assert band.status()["find"]["found"] is None and band.status()["tune"] == "Any of my tunes"
+        assert duplex.wait_for(lambda: (band.status().get("find") or {}).get("found") == "g-c-g-d", 40.0, 0.2)
+        st = band.status()
+        assert st["tune"] == "G C G D (the free guitar take)" and st["find"]["key"] == "G"
+        time.sleep(3.0)
+    finally:
+        band.stop()
+    assert s.error is None
+    logs = s.band.logs
+    first = next(lg.i for lg in logs if lg.tune == "g-c-g-d")
+    assert all(lg.tune is None and "comp" not in lg.plays for lg in logs[:first])  # listening: no chords part
+    after = [lg for lg in logs[first:] if "comp" in lg.plays]
+    assert len(after) >= 4 and all(lg.plays["comp"].chord == lg.predicted for lg in after)
