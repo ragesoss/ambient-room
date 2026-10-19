@@ -488,10 +488,25 @@ The live band as a program of its own (the player: not part of the practice app)
   on the next 1. "I count it in": `voicecount.VoiceBand` with Vosk's words (the model in `[voice] model`); the
   band starts on a spoken count, stops on "stop", and starts again on the next count. Without Vosk or its model
   the page does not offer it, nor the spoken "stop".
-- **The page** picks the tune, the tempo (default: the tune's takes' tempo, those to a metronome first), the
-  count-in, the input (room mic, Nadine, piezo), the instrument (the follower's preset), the parts (bass, chop,
-  chords) and the band's volume. Playing, it shows the beat in the bar, the chord, the key and the chart's
-  guess, each part's on/off and whether it has come in, the input's level, and the timing.
+- **The page** picks the tune, the tempo (default: the tune's takes' tempo, those to a metronome first), who
+  leads (below), the count-in, the input (room mic, Nadine, piezo), the instrument (the follower's preset), the
+  parts (bass, chop, chords) and the band's volume. Playing, it shows the beat in the bar, the chord, the key and
+  the chart's guess, each part's on/off and whether it has come in, the input's level, and the timing.
+- **Who leads** (2026-10-18; the player: "a beginner needs the band to hold steady. an advanced picker can lead it
+  like a real band"). Under the tempo, kept for each tune as its tempo is: "The band holds steady", "The band
+  follows gently", "You lead" (the default: the band as before, beat for beat). The start request's `follow` (a
+  step's id or 0-1, `session.FOLLOW_STEPS`: 0, 0.25, 1) goes to the beat follower as
+  `livebeat.LiveBeatParams.follow` (passed only when not 1, so an older transcription project runs the default;
+  a step below 1 with one that lacks it is refused at Start). Holding, the band keeps the tempo it started with:
+  the band's clicks (the page's tempo), or a spoken count's tempo re-fitted to the first two bars played (a
+  beginner counts at one tempo and plays at another), then no drift followed and no chase; it still stops when the
+  player stops. "Gently" takes a lasting change 2-3 beats later than leading, with half the wobble. The playing
+  view names the setting when it is not "You lead"; `tools/ud_run.py --follow` runs it with no device. The
+  transcription project's `docs/band-that-follows.md`, "Lead or follow", has the design and the numbers. No
+  device, Red Wing's take (played near 100) counted in by the band at 108: leading, the band at 100.1 bpm by beat
+  45; gently 100.5; holding, 108.0 on every beat, within 0.3 ms of the count's grid for 50 beats, and with the take
+  cut 15 s in it stopped with the player. At hold the band's place in the chart still follows the player's chords
+  (the chart follower): its chords went where the player was in the form, at the band's own time.
 - **The tunes**: Red Wing, Down Yonder, Big Sciota (with its second endings), Cherokee Shuffle and Saint Anne's
   Reel (AABB), Tennessee Waltz (3/4), and the free guitar take's form (G C G D, 2/4), from the transcription
   project's `chords.txt` and `takes.csv` (`[[tunes]]` in the config).
