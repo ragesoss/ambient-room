@@ -4,7 +4,7 @@ it measured. With the desktop's config (`config/ud-desktop.toml`: no device, a r
 whole loop runs and nothing is heard.
 
     tools/ud_run.py [--config config/ud-desktop.toml] [--tune red-wing] [--bpm N] [--seconds 30] [--count band|voice]
-        [--input ID] [--instrument dobro] [--follow hold|gentle|lead|0-1] [--json OUT]
+        [--input ID] [--instrument dobro] [--follow hold|gentle|lead|0-1] [--pocket pushed|even|none] [--json OUT]
 
 Each second: the state, the beat and chord, the parts; at the end: the clock (L estimated and measured), every
 cue's margin when it reached the engine (min, median), late and dropped notes, underruns, the listening's and the
@@ -54,7 +54,8 @@ def grade(sess) -> dict:
 def first_notes(sess) -> dict:
     """Each part's first note against where it belongs: the bass and the chords on beat 1 of bar 1 (the beat after
     the count-in), the chop on its "and", in engine frames (the count-in's clicks are on the same clock). ms late
-    (+) or early (-), from the frame FluidSynth started the note."""
+    (+) or early (-), from the frame FluidSynth started the note; and less the pocket's move of that play (the
+    pocket's own place: within a 64-frame block's half, 0.67 ms, when the band is on time)."""
     log = list(getattr(sess.engine, "log", None) or [])
     if not sess.clicks or not log:
         return {}
@@ -69,8 +70,11 @@ def first_notes(sess) -> dict:
             continue
         lg = min(starts, key=lambda g: g.start)
         beat = (lg.start - sess.clicks[0]) / (spb * RATE) - n
+        shift = sess.pocket.shift_ms(part, "and" if off else "beat", lg.tag[0]) if lg.tag else 0.0
+        ms = 1000 * (lg.start - (one + off * spb * RATE)) / RATE
         out[part] = {"beat_of_tune": round(beat, 3), "cue_beat": lg.tag[0] if lg.tag else None,
-                     "ms_from_its_place": round(1000 * (lg.start - (one + off * spb * RATE)) / RATE, 2)}
+                     "ms_from_its_place": round(ms, 2), "pocket_ms": round(shift, 2),
+                     "ms_from_its_pocket": round(ms - shift, 2)}
     return out
 
 
@@ -107,6 +111,8 @@ def main() -> None:
     ap.add_argument("--no-echo", action="store_true", help="leave the band's own sound in the input")
     ap.add_argument("--count-bars", default="auto", help="the band's count-in: auto, 1 or 2 bars")
     ap.add_argument("--follow", default="lead", help="lead or follow: hold, gentle, lead (the default), or 0-1")
+    ap.add_argument("--pocket", default=None, help="where each part sits against the beat: pushed, even, none "
+                    "(default: the config's)")
     ap.add_argument("--json", default=None)
     ap.add_argument("--logs", type=int, default=0, help="print the band's first N beats' logs")
     a = ap.parse_args()
@@ -123,7 +129,7 @@ def main() -> None:
     band = Band(cfg)
     body = {"tune": a.tune, "bpm": a.bpm, "count": a.count, "input": a.input, "instrument": a.instrument,
             "volume_db": a.volume, "listen_stop": False,
-            "count_bars": a.count_bars, "follow": a.follow}
+            "count_bars": a.count_bars, "follow": a.follow, "pocket": a.pocket}
     band.start(body)
     sess = band.session
     t0 = time.monotonic()
@@ -137,7 +143,8 @@ def main() -> None:
     timing = sess.timing()
     band.stop()
     ended = sess.ended - sess.started if sess.ended else None
-    report = {"tune": a.tune, "follow": sess.s.follow, "status": sess.status()["state"], "error": sess.error,
+    report = {"tune": a.tune, "follow": sess.s.follow, "pocket": sess.pocket.describe(),
+              "status": sess.status()["state"], "error": sess.error,
               "message": sess.message,
               "stop_reason": sess._stop_reason, "stream_s": round(sess.read / RATE, 2), "ran_s": ended,
               "recording": str(sess.rec.path) if sess.rec and sess.rec.on else None,

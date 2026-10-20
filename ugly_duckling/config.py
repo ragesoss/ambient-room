@@ -12,6 +12,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ambient import pocket as pockets
+
 from .record import RecordConfig
 
 REPO = Path(__file__).resolve().parent.parent
@@ -100,7 +102,37 @@ class Config:
     # (`transcribe.livebeat` `stop_beats`, `noise_gate_db`; the transcription project's `tools/stop_study.py`)
     stop_beats: int = 5
     noise_gate_db: float = 6.0
+    # the band's pocket (`ambient/pocket.py`): the preset a start gets unless it names another (the page's "Pocket"),
+    # per-part overrides of that preset ({part: {"beat" | "and" | "scatter": ms}}), and the scatter's seed
+    pocket: str = pockets.DEFAULT
+    pocket_parts: dict = field(default_factory=dict)
+    pocket_seed: int = pockets.SEED
     record: RecordConfig = field(default_factory=RecordConfig)
+
+    def pocket_for(self, name: str | None = None) -> pockets.Pocket:
+        """The pocket named (the config's own by default): the config's overrides apply to its own preset only."""
+        name = self.pocket if name is None else name
+        return pockets.make(name, self.pocket_parts if name == self.pocket else None, self.pocket_seed)
+
+
+def pocket_entry(path: Path, raw) -> tuple[str, dict, int]:
+    """`[band] pocket`: a preset's name (`pocket = "pushed"`), or a table: `preset`, `seed`, and per part its
+    overrides (`[band.pocket] preset = "pushed"`, `bass = { beat = -5 }`). Checked here (ValueError)."""
+    if isinstance(raw, str):
+        raw = {"preset": raw}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path}: [band] pocket: a preset's name ({', '.join(pockets.PRESETS)}) or a table")
+    unknown = set(raw) - {"preset", "seed", *pockets.PARTS}
+    if unknown:
+        raise ValueError(f"{path}: [band] pocket has no {', '.join(sorted(unknown))}")
+    name = str(raw.get("preset", pockets.DEFAULT))
+    parts = {k: v for k, v in raw.items() if k in pockets.PARTS}
+    seed = int(raw.get("seed", pockets.SEED))
+    try:
+        pockets.make(name, parts, seed)
+    except ValueError as e:
+        raise ValueError(f"{path}: [band] pocket: {e}")
+    return name, parts, seed
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -110,6 +142,7 @@ def load_config(path: Path | None = None) -> Config:
     unknown = set(dev) - set(Device.__dataclass_fields__)
     if unknown:
         raise ValueError(f"{path}: [device] has no {', '.join(sorted(unknown))}")
+    pocket, pocket_parts, pocket_seed = pocket_entry(path, band.get("pocket", pockets.DEFAULT))
     sounds = Path(os.path.expanduser(band.get("sounds", "sounds")))
     if not sounds.is_absolute():
         sounds = REPO / sounds
@@ -141,5 +174,6 @@ def load_config(path: Path | None = None) -> Config:
         echo_state_dir=band.get("echo_state_dir", Config.echo_state_dir),
         stop_beats=int(band.get("stop_beats", 5)),
         noise_gate_db=float(band.get("noise_gate_db", 6.0)),
+        pocket=pocket, pocket_parts=pocket_parts, pocket_seed=pocket_seed,
         record=RecordConfig(**{k: v for k, v in raw.get("record", {}).items()}),
     )

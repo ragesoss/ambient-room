@@ -1,5 +1,5 @@
 """The Ugly Duckling String Band: the ring, the tunes, the engine's live controls, the whole loop with no device (a
-recorded take as the input), the hand-over and the API."""
+recorded take as the input), the hand-over, the API, and the pocket."""
 
 import json
 import threading
@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from ambient.bandengine import BandEngine, Voice
+from ambient.pocket import note_class
 from ambient.output import PacedOutput
 from ugly_duckling import duplex
 from ugly_duckling.config import load_config
@@ -190,6 +191,17 @@ def test_band_follows_a_take_with_no_device():
     rights = [lg.plays["bass"].chord[0] == s.tune.chart[lg.i % len(s.tune.chart)][0]
               for lg in lb.logs if "bass" in lg.plays]
     assert len(rights) >= 8 and np.mean(rights) >= 0.85
+    # the pocket, "pushed" by default: each cue's notes moved by its part's place, and still ahead of the engine (its
+    # margin is after the move), so nothing late or dropped (above); the engine asked for each at the moved frame
+    assert s.s.pocket == "pushed" and s.pocket.name == "pushed" and s.player.pocket is s.pocket
+    cues = list(s.player.log)
+    assert all(c.shift_ms == s.pocket.shift_ms(c.cue.part, note_class(c.cue.t, c.cue.beat_t, s.player.spb), c.cue.i)
+               for c in cues)
+    assert {c.cue.part for c in cues if c.shift_ms < -4} >= {"bass", "chop"} and min(c.margin for c in cues) > 0
+    first = {}
+    for lg in s.engine.log:
+        first[tuple(lg.tag)] = min(first.get(tuple(lg.tag), lg.want), lg.want)
+    assert all(first[(c.cue.i, c.cue.part)] == round(c.at * RATE) for c in cues)
 
 
 @needs_band
@@ -328,7 +340,7 @@ def test_old_sessions_are_pruned_by_count_and_size(tmp_path):
 @needs_band
 def test_a_session_is_recorded_and_the_band_plays_from_beat_one(tmp_path):
     """Cherokee Shuffle at 170 (two bars of count-in): every part's first note on beat 1 (the chop on its "and"),
-    within a millisecond; the capture and the log written."""
+    within a millisecond of where its pocket puts it; the capture and the log written, the pocket in it."""
     import json as _json
 
     import soundfile as sf
@@ -348,14 +360,20 @@ def test_a_session_is_recorded_and_the_band_plays_from_beat_one(tmp_path):
     one = s.clicks[0] + 8 * spb * RATE
     for part, off in (("bass", 0.0), ("comp", 0.0), ("chop", 0.5)):
         # where the band put it (a loaded machine may sound a cue late: the engine shifts it, and counts it)
-        first = min(lg.want for lg in s.engine.log if lg.part == part and lg.start is not None)
-        assert abs(first - (one + off * spb * RATE)) < 0.001 * RATE, part
+        lg = min((lg for lg in s.engine.log if lg.part == part and lg.start is not None), key=lambda g: g.want)
+        shift = s.pocket.shift_ms(part, "and" if off else "beat", lg.tag[0])
+        assert lg.tag[0] == 0 and abs(lg.want - (one + (off * spb + shift / 1000) * RATE)) < 0.001 * RATE, part
     d = s.rec.path
     info = sf.info(str(d / "capture.flac"))
     assert info.channels == 4 and info.samplerate == RATE and info.duration > 4
-    evs = [_json.loads(x)["ev"] for x in open(d / "session.jsonl")]
+    log = [_json.loads(x) for x in open(d / "session.jsonl")]
+    evs = [e["ev"] for e in log]
     for k in ("start", "count_in", "clock", "beat", "cue", "decision", "level", "stop", "end"):
         assert k in evs, k
+    start = next(e for e in log if e["ev"] == "start")
+    assert start["settings"]["pocket"] == "pushed" and start["pocket"]["parts"]["bass"]["beat"] == -6.0
+    cue = next(e for e in log if e["ev"] == "cue" and e["part"] == "bass")
+    assert cue["pocket_ms"] == round(s.pocket.shift_ms("bass", "beat", cue["i"]), 3)
 
 
 # ------------------------------------------------------------------------------------------------- 2026-10-18
@@ -373,12 +391,16 @@ def test_any_tune_is_offered_in_the_meters_the_tunes_have():
 @needs_band
 def test_with_no_tune_chosen_the_band_names_the_tune_and_follows_its_chart():
     """The free guitar take (G C G D, 2/4) with no tune chosen, counted in 4: the band plays what it hears, then names
-    the tune (the status shows its title) and plays its chart from the place heard."""
+    the tune (the status shows its title) and plays its chart from the place heard. In the band's old timing (pocket
+    "none"): with "pushed", here, the band stopped after about 10 beats in 7 runs of 10 ("You stopped playing"; PLAN.md,
+    "The pocket": the beat follower's weighting by the echo canceller's estimate, which leads the guitar's booms once
+    the bass is ahead of the beat, and is all spurious here, with no band in this input)."""
     from ugly_duckling.server import Band
     cfg = load_config(DESKTOP)
     cfg.device.file_tune = "g-c-g-d"
     band = Band(cfg)
-    band.start({"tune": "any", "bpm": 103, "count": "band", "listen_stop": False, "instrument": "guitar"})
+    band.start({"tune": "any", "bpm": 103, "count": "band", "listen_stop": False, "instrument": "guitar",
+                "pocket": "none"})
     s = band.session
     try:
         assert duplex.wait_for(lambda: s.state == "playing", 6.0, 0.05)
@@ -395,3 +417,59 @@ def test_with_no_tune_chosen_the_band_names_the_tune_and_follows_its_chart():
     assert all(lg.tune is None and "comp" not in lg.plays for lg in logs[:first])  # listening: no chords part
     after = [lg for lg in logs[first:] if "comp" in lg.plays]
     assert len(after) >= 4 and all(lg.plays["comp"].chord == lg.predicted for lg in after)
+
+
+# ------------------------------------------------------------------------------------------------- 2026-10-20
+
+def test_the_pocket_is_read_from_the_config(tmp_path):
+    """`[band] pocket`: a preset's name or a table with overrides of it; none given, "pushed" (the unit's config from
+    before works as it is); anything else refused when the config is read."""
+    f = tmp_path / "ud.toml"
+    f.write_text("[band]\n")
+    c = load_config(f)
+    assert (c.pocket, c.pocket_parts) == ("pushed", {}) and c.pocket_for().offset_ms("bass", "beat") == -6.0
+    for name in ("ud-pi.toml", "ud-desktop.toml"):
+        assert load_config(REPO / "config" / name).pocket == "pushed"
+    f.write_text('[band]\npocket = "even"\n')
+    assert load_config(f).pocket_for().offset_ms("bass", "beat") == -8.0
+    f.write_text('[band.pocket]\npreset = "pushed"\nseed = 5\nbass = { beat = -5, scatter = 3 }\n')
+    c = load_config(f)
+    p = c.pocket_for()
+    assert (p.offset_ms("bass", "beat"), p.scatter_ms("bass"), p.offset_ms("chop", "and"), p.seed) == (-5, 3, -4, 5)
+    assert c.pocket_for("even").offset_ms("bass", "beat") == -8.0  # the overrides are its own preset's
+    for bad in ('[band]\npocket = "laid back"', "[band]\npocket = 3", "[band.pocket]\nbanjo = { beat = 5 }",
+                "[band.pocket]\nswing = 1.1", "[band.pocket]\nbass = { beat = -30 }"):
+        f.write_text(bad + "\n")
+        with pytest.raises(ValueError):
+            load_config(f)
+
+
+@needs_band
+def test_the_pocket_is_offered_and_taken_at_start():
+    """The page's choices (Pushed, Even, None) with their numbers and words, the config's the default; a step's id
+    taken at Start, anything else refused; the session's band player in that pocket."""
+    from fastapi.testclient import TestClient
+    from ugly_duckling.server import Band, create_app
+    cfg = load_config(DESKTOP)
+    with TestClient(create_app(cfg)) as c:
+        o = c.get("/api/options").json()["pocket"]
+        assert o["default"] == "pushed" and [s["id"] for s in o["steps"]] == ["pushed", "even", "none"]
+        pushed, even, none = o["steps"]
+        assert pushed["offset_ms"] == {"bass": {"beat": -6.0, "and": -6.0}, "comp": {"beat": 2.0, "and": -5.0},
+                                       "chop": {"beat": -4.0, "and": -4.0}}
+        assert pushed["scatter_ms"] == {"bass": 4.0, "comp": 4.0, "chop": 4.0} and none["scatter_ms"]["bass"] == 0.0
+        assert "bass 6 ms ahead" in pushed["words"] and "bass 8 ms ahead" in even["words"]
+        for bad in ("laid back", 3, ""):
+            r = c.post("/api/start", json={"tune": "red-wing", "pocket": bad})
+            assert r.status_code == 400 and "pocket" in r.json()["detail"], bad
+        for given, want in ((None, "pushed"), ("even", "even"), ("none", "none")):
+            body = {"tune": "red-wing", "listen_stop": False} | ({} if given is None else {"pocket": given})
+            r = c.post("/api/start", json=body)
+            assert r.status_code == 200, r.text
+            st = r.json()
+            assert st["settings"]["pocket"] == want and st["pocket"]["name"] == want, given
+            c.post("/api/stop")
+    cfg.pocket, cfg.pocket_parts = "even", {"bass": {"beat": -5}}  # the config's own preset, with an override
+    o = Band(cfg).options()["pocket"]
+    assert o["default"] == "even" and o["steps"][1]["offset_ms"]["bass"]["beat"] == -5.0
+    assert o["steps"][0]["offset_ms"]["bass"]["beat"] == -6.0

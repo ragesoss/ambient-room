@@ -34,6 +34,10 @@ echo = true
 # counting as an attack only this far over the room's noise (dB).
 stop_beats = 5
 noise_gate_db = 6.0
+# The band's pocket, where each part sits against its beat (ambient/pocket.py): "pushed" (the default, the player's
+# choice of 2026-10-20), "even" or "none" (every note on the beat); the page can choose another for a run. Per-part
+# overrides of this preset, in ms (+ late): pocket = { preset = "pushed", bass = { beat = -5, scatter = 3 } }.
+pocket = "pushed"
 
 # Each session recorded (the inputs, the loopback, a log) for replaying offline; the oldest deleted beyond these.
 [record]

@@ -7,8 +7,11 @@ sample 0 is 0 s) and when it was decided. The player:
 - voices it as the transcription project's offline render does, with its own function (`transcribe.bandvoice`,
   imported from that project, `[band] transcribe` in the config): the same notes, lengths and velocities, on the
   same SoundFont programs, pans and levels, so a live run and an offline render compare note for note;
+- places them in the band's pocket (`ambient/pocket.py`: where each part sits against the beat, the default none),
+  in the band's own time, a play's notes on the beat or on its "and" each by one shift (a strum keeps its spread);
 - maps the stream's clock to the engine's (`StreamClock`) and queues the notes as one group, with the lateness
-  its part may sound at (`LATE_S`); the engine drops a group later than that (`ambient/bandengine.py`).
+  its part may sound at (`LATE_S`, against the shifted time); the engine drops a group later than that
+  (`ambient/bandengine.py`).
 
 The clock is the seam between listening and playing. A cue meant for stream time t is heard at engine time
 `t + offset`:
@@ -22,6 +25,8 @@ The clock is the seam between listening and playing. A cue meant for stream time
 - Input latency: the capture hands the band a block only once it is full, and the converters add their own; both
   come out of the cue's lead before it reaches the player (`t - decided_at` is the most there is, `lead_s` in
   `transcribe.band.BandParams`), as do the band's compute, the engine's block and the output's buffer.
+- The pocket is not latency: it moves a part around the band's beat, and a part moved early spends that much of
+  what is left of the lead (each cue's `margin` is after it; `ambient/pocket.py`, "The lead an early part takes").
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .bandengine import BandEngine, Voice
+from .pocket import Pocket
 
 # How late each part may sound, past its time, before its play is dropped instead (s). A bass note a little late
 # sounds laid back; a chop late on the "and" smears the off-beat, so it may be later only by less. First settings
@@ -83,27 +89,35 @@ class CueLog:
     arrived: float  # monotonic
     margin: float  # engine time of its first note less the first engine time still open when it arrived (s)
     delay: float | None  # from its arrival until the first frame still open is heard (s): the engine's delay
+    shift_ms: float = 0.0  # the pocket's move of its notes (ms, + late; in `margin` already)
+    at: float = 0.0  # engine time of its first note (s)
 
 
 @dataclass
 class BandPlayer:
     """Cues in (`cue`), notes out to the engine. `spb`: the tune's beat (s), which sets the notes' lengths, as in
-    the offline render (the tempo the band counts in at)."""
+    the offline render (the tempo the band counts in at). `pocket`: where each part sits against the beat
+    (`ambient/pocket.py`); None, every note on it."""
     engine: BandEngine
     clock: StreamClock
     spb: float
     voicing: object  # transcribe.bandvoice
     late_s: dict[str, float] = field(default_factory=lambda: dict(LATE_S))
     log: list[CueLog] = field(default_factory=list)
+    pocket: Pocket | None = None
 
     def cue(self, c) -> None:
         notes = self.voicing.play_notes(c.part, c.play, c.t, self.spb, getattr(c, "bar", None))
         if not notes:
             return
+        shift = 0.0
+        if self.pocket is not None:  # in the band's time, before the clock: the same as an offline render's
+            notes, shift = self.pocket.place(notes, c.part, c.i, getattr(c, "beat_t", c.t), self.spb)
         group = [(self.clock.engine_time(t), length, c.part, key, vel) for t, length, _, key, vel in notes]
         now = time.monotonic()
         committed = self.engine.committed / self.engine.rate
         started = self.engine.started_at()
         delay = None if started is None else started + committed - now
-        self.log.append(CueLog(c, now, min(g[0] for g in group) - committed, delay))
+        first = min(g[0] for g in group)
+        self.log.append(CueLog(c, now, first - committed, delay, shift, first))
         self.engine.play(group, self.late_s.get(c.part, 0.0), tag=(c.i, c.part))

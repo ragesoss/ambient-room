@@ -13,6 +13,7 @@ tunes = "~/play/dobro-transcription/tunes"
 sounds = "sounds"
 lead_s = 0.05
 in_block = 256
+pocket = "pushed"   # where each part sits against the beat (ambient/pocket.py): pushed, even or none
 
 [device]
 kind = "file"

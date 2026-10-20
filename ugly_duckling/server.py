@@ -21,8 +21,8 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from .config import Config, load_config
-from .session import (FOLLOW_DEFAULT, FOLLOW_STEPS, PARTS, PART_NAMES, Busy, Session, Settings, count_in_plan,
-                      selfcheck)
+from .session import (FOLLOW_DEFAULT, FOLLOW_STEPS, PARTS, PART_NAMES, POCKET_STEPS, Busy, Session, Settings,
+                      count_in_plan, selfcheck)
 from .tunes import Tune, load_tunes
 
 STATIC = Path(__file__).parent / "static"
@@ -85,9 +85,18 @@ class Band:
                 "voice": {"available": self.voice_why is None, "why": self.voice_why},
                 "count_in": {"two_bar_bpm": c.two_bar_bpm, "bars": ["auto", "1", "2"]},
                 "follow": {"default": FOLLOW_DEFAULT, "steps": list(FOLLOW_STEPS)},
+                "pocket": {"default": c.pocket,
+                           "steps": [s | {"words": c.pocket_for(s["id"]).words(), **self._pocket_numbers(s["id"])}
+                                     for s in POCKET_STEPS]},
                 "any": {"available": bool(self.tunes) and self._can_find(), "bpm": round(ANY_BPM),
                         "meters": [m for m in (4, 3) if any(self._fits(t, m) for t in self.tunes.values())]},
                 "device": c.device.kind}
+
+    def _pocket_numbers(self, name: str) -> dict:
+        """A pocket's offsets (ms, + late) by part and class, and its scatter, for the page and the API."""
+        pk = self.cfg.pocket_for(name)
+        return {"offset_ms": {p: {c: pk.offset_ms(p, c) for c in ("beat", "and")} for p in PARTS},
+                "scatter_ms": {p: pk.scatter_ms(p) for p in PARTS}}
 
     @staticmethod
     def _can_find() -> bool:
@@ -161,7 +170,8 @@ class Band:
             if bars not in ("auto", "1", "2"):
                 raise ValueError("count_bars: auto, 1 or 2")
             follow = self._follow(body.get("follow", FOLLOW_DEFAULT))
-            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars, follow)
+            pocket = self._pocket(body.get("pocket"))
+            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars, follow, pocket)
             words = self.model() if (count == "voice" or listen_stop) else None
             sess = Session(self.cfg, tune, inp, s, self.voicing, words, on_end=self._ended,
                            echo_state=self.echo_state(inp.id), catalog=catalog)
@@ -185,6 +195,15 @@ class Band:
             if "follow" not in LiveBeatParams.__dataclass_fields__:
                 raise ValueError("the transcription project here has no lead-or-follow setting (update it)")
         return follow
+
+    def _pocket(self, value) -> str:
+        """The pocket from the start request: a step's id (`POCKET_STEPS`); none given, the config's."""
+        if value is None:
+            return self.cfg.pocket
+        ids = [s["id"] for s in POCKET_STEPS]
+        if value not in ids:
+            raise ValueError(f"pocket: {', '.join(ids)}")
+        return str(value)
 
     def _ended(self, sess: Session) -> None:
         self.last = sess

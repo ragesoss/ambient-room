@@ -130,6 +130,11 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
         <div class="chips" id="follows"></div>
         <div class="hint" id="followhint"></div>
       </div>
+      <div id="pocketsec">
+        <h2 style="margin-top:14px">Pocket</h2>
+        <div class="chips" id="pockets"></div>
+        <div class="hint" id="pockethint"></div>
+      </div>
     </div>
     <div class="card">
       <h2>Count-in</h2>
@@ -164,7 +169,7 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
 const $ = (id) => document.getElementById(id);
 const KEY = "ud-settings";
 let opts = null, st = null, pollTimer = null;
-let pick = { tune: null, bpm: {}, follow: {}, input: null, instrument: null, count: "band", count_bars: "auto", parts: {bass: true, chop: true, comp: true}, volume_db: 0, listen_stop: true };
+let pick = { tune: null, bpm: {}, follow: {}, pocket: null, input: null, instrument: null, count: "band", count_bars: "auto", parts: {bass: true, chop: true, comp: true}, volume_db: 0, listen_stop: true };
 try { Object.assign(pick, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
 if (!pick.follow || typeof pick.follow !== "object") pick.follow = {};
 function save() { try { localStorage.setItem(KEY, JSON.stringify(pick)); } catch (e) {} }
@@ -205,6 +210,12 @@ function followStep(t) {
   const steps = followSteps();
   return steps.find(x => x.id === pick.follow[t.id]) || steps.find(x => x.value === opts.follow.default) || null;
 }
+// the pocket: where each part sits against the beat, one choice for every tune (the service's presets and default)
+function pocketSteps() { return (opts && opts.pocket && opts.pocket.steps) || []; }
+function pocketStep() {
+  const steps = pocketSteps();
+  return steps.find(x => x.id === pick.pocket) || steps.find(x => x.id === opts.pocket.default) || null;
+}
 function followHint(step, bpm) {
   if (!step) return "";
   const each = " Kept for each tune, as its tempo is.";
@@ -231,6 +242,10 @@ function renderSetup() {
   $("followsec").hidden = !fsteps.length;
   for (const x of fsteps) fb.append(chip(x.name, x.note, fstep && x.id === fstep.id, () => { pick.follow[t.id] = x.id; save(); renderSetup(); }));
   $("followhint").textContent = followHint(fstep, bpm);
+  const psteps = pocketSteps(), pstep = pocketStep(), pk = $("pockets"); pk.innerHTML = "";
+  $("pocketsec").hidden = !psteps.length;
+  for (const x of psteps) pk.append(chip(x.name, x.note, pstep && x.id === pstep.id, () => { pick.pocket = x.id; save(); renderSetup(); }));
+  $("pockethint").textContent = pstep ? `Where each part plays against the beat. ${pstep.words} The same for every tune.` : "";
   for (const b of $("counts").children) {
     b.setAttribute("aria-pressed", b.dataset.count === pick.count ? "true" : "false");
     if (b.dataset.count === "voice") b.disabled = !opts.voice.available;
@@ -272,12 +287,12 @@ async function api(method, path, body) {
 }
 
 $("start").onclick = async () => {
-  const t = tune(), fstep = followStep(t);
+  const t = tune(), fstep = followStep(t), pstep = pocketStep();
   $("start").disabled = true; show("Asking the other apps to let go, and opening the device…");
   try {
     render(await api("POST", "/api/start", { tune: t.id, bpm: pick.bpm[t.id] || t.bpm, input: pick.input, instrument: pick.instrument,
       count: pick.count, count_bars: pick.count_bars || "auto", parts: pick.parts, volume_db: pick.volume_db, listen_stop: pick.listen_stop,
-      ...(fstep ? { follow: fstep.id } : {}) }));
+      ...(fstep ? { follow: fstep.id } : {}), ...(pstep ? { pocket: pstep.id } : {}) }));
     show("");
   } catch (e) { show(e.message, true); }
   $("start").disabled = false; poll();
@@ -302,8 +317,10 @@ function render(s) {
   }
   $("lstate").textContent = STATE[s.state] || s.state;
   const lead = followSteps().find(x => s.settings && x.value === s.settings.follow);
+  const pock = pocketSteps().find(x => s.settings && x.id === s.settings.pocket);
   $("ltune").textContent = [s.tune, `${s.count ? s.count.bpm : s.bpm} bpm`, s.input,
-    lead && lead.value !== opts.follow.default ? lead.name.toLowerCase() : ""].filter(Boolean).join(" · ");
+    lead && lead.value !== opts.follow.default ? lead.name.toLowerCase() : "",
+    pock && pock.id !== opts.pocket.default ? pock.short : ""].filter(Boolean).join(" · ");
   const f = s.find;
   $("lfind").hidden = !f;
   if (f) $("lfind").textContent = f.found ? `Found by ear: following its chart, in ${f.key}` : "Listening for which tune" + (f.named_title && f.sure >= 0.3 ? `: maybe ${f.named_title} (${Math.round(100 * f.sure)}%)` : "");

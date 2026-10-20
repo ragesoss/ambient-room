@@ -4,7 +4,7 @@ wall clock's pace, its cues sounded by the band player and engine into an output
 and keeps what it plays, then compared with the transcription project's offline render of the same take.
 
     tools/band_replay.py [CASE ...] [--config FILE] [--transcribe DIR] [--block 128] [--buffer-ms 8]
-        [--in-block 256] [--lead 0.05] [--out DIR] [--clip-s 25] [--thread]
+        [--in-block 256] [--lead 0.05] [--pocket none|pushed|even] [--out DIR] [--clip-s 25] [--thread]
     tools/band_replay.py levels [--transcribe DIR]
     tools/band_replay.py sweep [CASE ...] --blocks 64,128,256 (--buffers-ms 2.7,5.3,8 | --mults 2,3,4) [--out DIR]
     tools/band_replay.py [CASE ...] --output alsa [--device DEV] [--out DIR]     # ALOUD
@@ -23,6 +23,9 @@ For each take:
   capture is what that card would have played.
 - **Offline:** the same decisions over the whole take (`livebeat.follow`, `band.run`, at 48 kHz) voiced as
   `tools/band_render.py` voices them (`notes_for`, `stems_for`: the `fluidsynth` program), and its mix.
+- **The pocket** (`--pocket`, `ambient/pocket.py`; default none, every note on the beat): the live band player and the
+  offline notes placed by the same pocket (`Pocket.place`, its scatter drawn per part, class and beat), so the two
+  still compare note for note.
 - **Compared:** every note, live against offline, by part: its onset as heard (the live one from the engine's log,
   checked against the capture; the offline one as the `fluidsynth` program places it, checked against its render);
   the cues that came late (played late, or dropped); each cue's margin when it reached the player (how long before
@@ -53,6 +56,7 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 
 from ambient import bandplayer  # noqa: E402
+from ambient import pocket as pockets  # noqa: E402
 from ambient.bandengine import EngineProcess, EngineSpec  # noqa: E402
 from ambient.config import load_config  # noqa: E402
 from ambient.fluid import STEP, Synth  # noqa: E402
@@ -97,9 +101,10 @@ def project_root(args, cfg) -> Path:
 def replay(pj: Project, case_name: str, fonts: list[Path], block: int, buffer_ms: float, in_block: int,
            lead_s: float | None, capture: Path | None, late_s: dict | None = None, gain_db: float = 0.0,
            voices=None, process: bool = True, keep_stems: bool = True, output: str = "paced", device: str = "",
-           period_ms: float | None = None, rt_priority: int = 0) -> dict:
+           period_ms: float | None = None, rt_priority: int = 0, pocket=None) -> dict:
     """The take streamed through the live band at the wall clock's pace into the band player and engine (in a
-    process of its own, or a thread of this one). `output` "alsa" plays it on `device`: aloud."""
+    process of its own, or a thread of this one). `output` "alsa" plays it on `device`: aloud. `pocket`: the band
+    player's (`ambient/pocket.py`; None, every note on the beat)."""
     case = pj.case(case_name)
     tk = pj.bst.take_at(case, RATE)
     chart = pj.bh.chart_of(case)
@@ -114,7 +119,7 @@ def replay(pj: Project, case_name: str, fonts: list[Path], block: int, buffer_ms
         time.sleep(0.001)
     zero = time.monotonic() + 0.1  # the stream's sample 0, at the wall clock
     clock = bandplayer.StreamClock.replay(zero, engine.started_at())
-    player = bandplayer.BandPlayer(engine, clock, tk.spb, pj.voicing)
+    player = bandplayer.BandPlayer(engine, clock, tk.spb, pj.voicing, pocket=pocket)
     if late_s is not None:
         player.late_s = dict(late_s)
     y = tk.y
@@ -143,7 +148,7 @@ def replay(pj: Project, case_name: str, fonts: list[Path], block: int, buffer_ms
         raise RuntimeError(engine.error)
     return dict(case=case, tk=tk, chart=chart, band=band, engine=engine, capture=capture, clock=clock,
                 player=player, cues=cues, compute=compute, block=block, buffer_ms=buffer_ms, in_block=in_block,
-                lead_s=band.band.p.lead_s, process=process, zero=zero)
+                lead_s=band.band.p.lead_s, process=process, zero=zero, pocket=pocket)
 
 
 # ---------------------------------------------------------------------------------------------- offline
@@ -190,11 +195,26 @@ def render_like_cli(notes, fonts: list[Path], voicing, length: int) -> dict[str,
     return out
 
 
+def notes_for(pj: Project, logs, spb: float, pocket=None) -> list:
+    """band_render's `notes_for` (every play the band made, voiced), each play's notes placed by `pocket` as the band
+    player places them (`Pocket.place`; None: band_render's own)."""
+    if pocket is None:
+        return pj.br.notes_for(logs, spb)
+    out = []
+    for n, lg in enumerate(logs):
+        nxt = logs[n + 1].t if n + 1 < len(logs) else lg.t + spb
+        for part, play in lg.plays.items():
+            at = lg.t + play.offset * (nxt - lg.t)  # the chop: halfway to the next beat (band_render's)
+            out += pocket.place(pj.voicing.play_notes(part, play, at, spb, lg.bar), part, lg.i, lg.t, spb)[0]
+    return out
+
+
 def offline(pj: Project, r: dict, fonts: list[Path]) -> dict:
-    """The same take's decisions over the whole take, voiced and rendered as band_render does."""
+    """The same take's decisions over the whole take, voiced and rendered as band_render does (in the replay's
+    pocket)."""
     tk, B = r["tk"], pj.B
     logs = B.run(tk.y, RATE, pj.bh.beats_for(tk, "live", RATE), r["chart"], None, tk.bpb, tk.notch, 0)
-    notes = pj.br.notes_for(logs, tk.spb)
+    notes = notes_for(pj, logs, tk.spb, r.get("pocket"))
     stems = pj.br.stems_for(notes, fonts[0].parent)
     y = pj.br.take_audio(r["case"])
     # the program's onsets: rendered here at `cli_frame`'s frames, the same sound to 16 bits
@@ -475,6 +495,8 @@ def main() -> None:
     p.add_argument("--buffer-ms", type=float, default=None, help="the output's buffer (ms)")
     p.add_argument("--in-block", type=int, default=256, help="the capture's block (samples at 48 kHz)")
     p.add_argument("--lead", type=float, default=None, help="lead_s (default the band's, 0.05)")
+    p.add_argument("--pocket", default="none", choices=tuple(pockets.PRESETS),
+                   help="where each part sits against the beat, live and offline (default none: on it)")
     p.add_argument("--out", type=Path, default=None, help="where the clips and the JSON go")
     p.add_argument("--clip-s", type=float, default=25.0)
     p.add_argument("--blocks", default="64,128,256")
@@ -496,6 +518,7 @@ def main() -> None:
     cmd = a.cases[0] if a.cases and a.cases[0] in ("levels", "sweep") else None
     cases = [c for c in a.cases if c not in ("levels", "sweep")] or ["red-wing", "bass-dy"]
     late = {k: v / 1000 for k, v in cfg.band.late_ms.items()}
+    pocket = None if a.pocket == "none" else pockets.make(a.pocket)
     if cmd == "levels":
         levels(pj, fonts)
         return
@@ -509,7 +532,7 @@ def main() -> None:
                     continue
                 for name in cases:
                     r = replay(pj, name, fonts, blk, buf, a.in_block, a.lead, None, late, cfg.band.gain_db,
-                               process=not a.thread, keep_stems=False)
+                               process=not a.thread, keep_stems=False, pocket=pocket)
                     eng = r["engine"]
                     margins = [c.margin for c in r["player"].log]
                     late_n = sum(v["late"] for v in eng.counts.values())
@@ -537,7 +560,7 @@ def main() -> None:
             a.out.mkdir(parents=True, exist_ok=True)
         r = replay(pj, name, fonts, block, buffer_ms, a.in_block, a.lead, cap if a.out else None, late,
                    cfg.band.gain_db, process=not a.thread, output=a.output, device=a.device or cfg.band.device,
-                   period_ms=cfg.band.period_ms, rt_priority=cfg.band.rt_priority)
+                   period_ms=cfg.band.period_ms, rt_priority=cfg.band.rt_priority, pocket=pocket)
         off = offline(pj, r, fonts)
         if not a.out and a.output == "paced":
             raise SystemExit("give --out: the comparison reads the capture")

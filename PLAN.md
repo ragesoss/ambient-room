@@ -488,10 +488,11 @@ The live band as a program of its own (the player: not part of the practice app)
   on the next 1. "I count it in": `voicecount.VoiceBand` with Vosk's words (the model in `[voice] model`); the
   band starts on a spoken count, stops on "stop", and starts again on the next count. Without Vosk or its model
   the page does not offer it, nor the spoken "stop".
-- **The page** picks the tune, the tempo (default: the tune's takes' tempo, those to a metronome first), who
-  leads (below), the count-in, the input (room mic, Nadine, piezo), the instrument (the follower's preset), the
-  parts (bass, chop, chords) and the band's volume. Playing, it shows the beat in the bar, the chord, the key and
-  the chart's guess, each part's on/off and whether it has come in, the input's level, and the timing.
+- **The page** picks the tune, the tempo (default: the tune's takes' tempo, those to a metronome first), who leads
+  (below), the pocket ("The pocket", below), the count-in, the input (room mic, Nadine, piezo), the instrument (the
+  follower's preset), the parts (bass, chop, chords) and the band's volume. Playing, it shows the beat in the bar, the
+  chord, the key and the chart's guess, each part's on/off and whether it has come in, the input's level, and the
+  timing.
 - **Who leads** (2026-10-18; the player: "a beginner needs the band to hold steady. an advanced picker can lead it
   like a real band"). Under the tempo, kept for each tune as its tempo is: "The band holds steady", "The band
   follows gently", "You lead" (the default: the band as before, beat for beat). The start request's `follow` (a
@@ -626,6 +627,73 @@ design and the numbers); here, the service and the page.
   on the dobro (a spoken count) on bar 23, Big Sciota on bar 17 of 24; the right tune each time, and from there the
   chords the same as the band given the tune.
 - Not deployed.
+
+### The pocket (2026-10-20)
+
+Where each part sits against the band's beat. The player chose "pushed" by ear (the pushed backbeat, the close mics'
+defaults; the transcription project's `docs/pocket-parameters.md`, "The player's choice", and its review
+`2026-10-20-pocket-presets`), and rated "even" better than the band as it was too, at 100 and 125 bpm. Built as
+`ambient/pocket.py`; the default "pushed". In ms against the band's beat, + late, - early:
+
+| preset | bass | chords on the beat / on its "and" | chop | scatter (sd) |
+|---|---|---|---|---|
+| pushed (the default) | -6 | +2 / -5 | -4 | 4 |
+| even | -8 | 0 / 0 | -3 | 4 |
+| none (the band as it was) | 0 | 0 / 0 | 0 | 0 |
+
+- **Where it acts.** In the band player (`BandPlayer.cue`): the voicing's notes for a cue
+  (`transcribe.bandvoice.play_notes`) moved by the pocket in the band's own time, then mapped to the engine by the
+  stream clock. So a live run, a replay and an offline render that places the voicing's notes with the same
+  `Pocket.place` (`tools/band_replay.py --pocket`, `tools/pocket_check.py`) play the same notes. The band's clock,
+  its beats, its decisions, `lead_s` and the stream clock are untouched. The engine judges lateness (`LATE_S`)
+  against the moved time.
+- **The classes.** A note's class is where it falls in its beat: the band's beat (the recordings' 1 and 3) or its
+  "and" (their 2 and 4). The band's chords strum on every beat, so they take the recordings' guitar boom's +2; the
+  -5 for a strum on the "and" waits for a boom-chuck comp (the voicing, not built: the board's `pocket-in-band` has
+  it), which would take it without a change here, its boom and strum classed apart even when voiced from one play.
+- **The scatter** is drawn per play and class from its own generator, seeded by the pocket's seed, the part, the
+  class and the beat, and clipped at 2.5 standard deviations (10 ms at 4): the same draws in any order the cues come.
+- **The lead.** An early note spends that much of the margin the band's lead leaves when its cue reaches the player.
+  The earliest a pocket can put a note: "pushed" -16 ms (the bass's -6 less 2.5 scatters), "even" -18; a pocket that
+  could go earlier than 20 ms is refused (the band's cues had 22-25 ms left at least on the control unit, above).
+  Measured, no device: the whole loop on Red Wing (the take, 25 s), the least margin 25.6 ms with none, 14.3 ms with
+  pushed (the bass's first note 13.7 ms early: a draw of -1.9), median 33-34 either way, nothing late or dropped; the
+  replay of Red Wing (`tools/band_replay.py red-wing --pocket pushed`, the wall clock's pace) the bass's margin
+  median 28.3 ms, least 17.3 (the chords' 36.6 and 25.4), every note the offline render's, asked within 0.01 ms of
+  it, none late or dropped. `tests/test_band.py` checks the case: a cue with the unit's least margin (22 ms) and the
+  note moved the most "pushed" can (16 ms) is on time.
+- **The setting.** The config's `[band] pocket` names the preset (`pocket = "pushed"`, the default when it is not
+  there), or is a table with per-part overrides of it (`pocket = { preset = "pushed", bass = { beat = -5, scatter =
+  3 } }`, and `seed`); checked when the config is read. The page's "Pocket", under "Who leads": Pushed, Even, None,
+  the numbers in words under it, one choice for every tune; the start request's `pocket` (a preset's id; the config's
+  if not given). The playing view names it when it is not the default. The session's log has the pocket at the start
+  (its numbers and seed) and each cue's `pocket_ms`. `tools/ud_run.py --pocket`.
+- **Checked by the pocket analyzer** (`tools/pocket_check.py`; the transcription project's `transcribe.pocket` on each
+  part's stem, as its `pipeline/tools/pocket_ab.py` checked the review's renders). The band alone on Red Wing's chart
+  at 100 bpm (32 bars), its own three parts through the band player and engine; measured and expected each less the
+  "none" render's, the expected against the notes' own consensus (the analyzer's grid moves with the pocket), ms:
+
+  | | bass, beat | chords, beat | chop, "and" |
+  |---|---|---|---|
+  | pushed: set / expected / measured | -6 / -3.4 / -3.1 | +2 / +4.4 / +5.8 | -4 / -1.5 / -1.5 |
+  | even | -8 / -4.3 / -4.0 | 0 / +3.6 / +4.9 | -3 / +0.2 / +0.2 |
+
+  The chords read 1.3-1.4 ms late under scatter, as the review's guitar boom did. The review's own notes and render
+  (the boom-chuck guitar, a banjo behind), placed by this code: within 0.5 ms of the review's own measurements of
+  "pushed" and "even" in every cell (the bass -3.3 against -3.0, the boom +6.0 against +6.0, the strum -3.6 against
+  -4.1, the chop -2.3 against -1.8).
+- **Found with it: the beat follower's echo weighting.** With no device, "Any of my tunes" on the free guitar take
+  (no chart: the parts come in on what the band hears) stopped the band after about 10 beats ("You stopped playing")
+  in 7 runs of 10 with "pushed", and named the tune at 13-18 s in the other 3; with "none" it named it in 7 of 7 at
+  10.8-15.7 s; "even" at 18.1 s in 3 of 3. With the echo canceller off, or with its estimate not given to the
+  beat follower (the cleaned input kept), "pushed" named it at 10.8-13.3 s. The follower counts a rise only as far as
+  the input stands over the canceller's estimate of the band there (`livebeat` `echo_margin_db`); once the band's bass
+  sounds a few ms before the player's attack, a cold canceller can predict that attack from the band, and its
+  estimate swallows the attack's rise. Here the estimate is all spurious (no band in this input), as it would be on
+  a pickup with little of the band. With the tune's chart chosen (counted in) the same take ran alike with both (5
+  runs); so did Red Wing on the dobro and Down Yonder on the bass. The test for "Any of my tunes" runs with "none";
+  the follower's weighting is the transcription project's to look at before the live band leans on it.
+- Not deployed. No config entry is needed on the unit: without one the band's pocket is "pushed".
 
 ### Band sounds: a plan (2026-10-17)
 

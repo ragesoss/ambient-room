@@ -22,7 +22,9 @@ What happens in between (in a thread of its own; the device and the band's sound
 3. **Listening.** The capture is read from the ring in `in_block` frames and pushed to the band; each part's
    play (`band.Cue`) goes to the band player as it comes, unless that part is off. With voice on, "stop" stops
    the band (a click start: the whole run). How much the band takes the player's tempo is the player's lead or
-   follow (`Settings.follow`, `FOLLOW_STEPS`): from the count's tempo held to the player leading.
+   follow (`Settings.follow`, `FOLLOW_STEPS`): from the count's tempo held to the player leading. Where each part
+   sits against the band's beat is its pocket (`Settings.pocket`, `POCKET_STEPS`, `ambient/pocket.py`): the band
+   player moves each play's notes by it before they go to the engine.
    **No tune chosen** ("Any of my tunes", `catalog`): the band starts with no chart and plays what it hears; once
    it is sure which of the tunes is played, it takes that tune's chart at the place heard, and lets it go again if
    it stops fitting (`transcribe.band.TuneFinder`). The status names the tune followed.
@@ -44,6 +46,7 @@ from pathlib import Path
 import numpy as np
 
 from ambient import bandplayer, peers
+from ambient import pocket as pockets
 from ambient.bandengine import EngineProcess, EngineSpec
 
 from . import duplex
@@ -70,6 +73,14 @@ FOLLOW_STEPS = (
     {"id": "lead", "value": 1.0, "name": "You lead", "note": "the band follows you, as a band would"},
 )
 FOLLOW_DEFAULT = 1.0
+# The pocket: where each part sits against the band's beat (`ambient/pocket.py`; the transcription project's
+# `docs/pocket-parameters.md`). The player chose "pushed" (2026-10-20), and rated "even" better than the band as it
+# was too; "none" is the band as it was. The default is the config's (`[band] pocket`, "pushed" if not set).
+POCKET_STEPS = (
+    {"id": "pushed", "name": "Pushed", "note": "the bass and chop ahead, the chords behind", "short": "pushed pocket"},
+    {"id": "even", "name": "Even", "note": "the bass ahead, the chords on the beat", "short": "even pocket"},
+    {"id": "none", "name": "None", "note": "every note on the beat", "short": "no pocket"},
+)
 
 
 class Busy(Exception):
@@ -88,6 +99,7 @@ class Settings:
     listen_stop: bool = True  # with words: "stop" stops the band
     count_bars: str = "auto"  # the band's count-in: "1", "2" bars, or "auto" (two at or above `two_bar_bpm`)
     follow: float = FOLLOW_DEFAULT  # lead or follow (`FOLLOW_STEPS`): 1 the player leads, 0 the band holds the tempo
+    pocket: str = pockets.DEFAULT  # where each part sits against the beat (`POCKET_STEPS`, `Config.pocket_for`)
 
 
 def count_in_plan(cfg: Config, bpm: float, beats_per_bar: int, count: str = "band", bars: str = "auto") -> dict:
@@ -188,6 +200,7 @@ class Session:
         self.final: dict = {}  # what the engine kept, once stopped
         self.conv = int(round(cfg.device.converter_ms * RATE / 1000))
         self.plan = count_in_plan(cfg, settings.bpm, tune.beats_per_bar, settings.count, settings.count_bars)
+        self.pocket = cfg.pocket_for(settings.pocket)  # ValueError for a pocket the config does not know
         self.echo = None  # the band's own sound taken out of the input (`transcribe.echo`)
         self.room_echo = None  # the same on the room mic, for the room's delay, when the band follows another input
         self.echo_state = echo_state  # a canceller's state from an earlier session on this input
@@ -273,6 +286,7 @@ class Session:
                            "stop_beats": c.stop_beats, "noise_gate_db": c.noise_gate_db,
                            "two_bar_bpm": c.two_bar_bpm, "click_db": c.click_db,
                            "transcribe": c.transcribe, "config": str(c.path)},
+                     pocket=self.pocket.describe(),
                      capture_channels=["input", "loopback", "input less the band", "room mic"], rate=RATE,
                      pruned=getattr(self.rec, "pruned", []))
 
@@ -311,7 +325,8 @@ class Session:
             self.L = self.L_est_ref = float(h[duplex.H_L])
             self._make_echo()
             clock = bandplayer.StreamClock(self._offset())
-            self.player = bandplayer.BandPlayer(self.engine, clock, 60.0 / self.s.bpm, self.voicing)
+            self.player = bandplayer.BandPlayer(self.engine, clock, 60.0 / self.s.bpm, self.voicing,
+                                                pocket=self.pocket)
             self.player.log = deque(maxlen=2000)
             if self.words_model is not None and (self.s.count == "voice" or self.s.listen_stop):
                 from transcribe.voicecount import CountWords
@@ -566,10 +581,12 @@ class Session:
 
     def _cues(self, cues) -> None:
         for c in cues:  # in the stream's seconds (a VoiceBand's already shifted by its origin)
-            if self.rec:
+            if self.rec:  # `t` the band's; the pocket moves its notes by `pocket_ms`
                 self.rec.log("cue", i=c.i, part=c.part, chord=c.play.chord, tone=c.play.tone, muted=c.play.muted,
                              t=c.t, beat_t=c.beat_t, decided_at=c.decided_at, bar=c.bar,
-                             on=bool(self.s.parts.get(c.part, False)), heard_to=self.read / RATE)
+                             on=bool(self.s.parts.get(c.part, False)), heard_to=self.read / RATE,
+                             pocket_ms=round(self.pocket.shift_ms(
+                                 c.part, pockets.note_class(c.t, c.beat_t, self.player.spb), c.i), 3))
             self.last_cue[c.part] = c
             if self.s.parts.get(c.part, False) and c.part in PARTS:
                 self.player.cue(c)
@@ -637,7 +654,7 @@ class Session:
         out = {"state": self.state, "message": self.message, "error": self.error, "tune": self.tune.name,
                "tune_id": self.tune.id, "bpm": round(self.s.bpm), "beats_per_bar": self.tune.beats_per_bar,
                "settings": asdict(self.s), "input": self.inp.name if self.inp else None,
-               "seconds": round(now, 1)}
+               "seconds": round(now, 1), "pocket": self.pocket.describe()}
         band, origin = self._live_band()
         beat = None
         if band is not None:
@@ -702,7 +719,7 @@ class Session:
                "listen_ms_per_s": round(1000 * self.cpu_listen / wall, 1),
                "block_ms_median": round(1000 * float(np.median(comp)), 2),
                "block_ms_worst": round(1000 * float(comp.max()), 2)}
-        if self.player is not None and self.player.log:
+        if self.player is not None and self.player.log:  # after the pocket's move (an early part spends some)
             m = np.array([c.margin for c in self.player.log])
             out["margin_ms"] = {"min": round(1000 * float(m.min()), 1), "median": round(1000 * float(np.median(m)), 1),
                                 "n": len(m)}
