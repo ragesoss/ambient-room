@@ -1,12 +1,15 @@
 """Each run of the band kept, so it can be replayed and graded offline: a folder per session under `[record] dir`
 (default `~/ud-sessions`), named by its start time (`2026-10-17_163254`), holding
 
-- `capture.flac`: 48 kHz, 24-bit, four channels: 0 the chosen input as captured (the room mic, the Nadine, the
+- `capture.flac`: 48 kHz, 24-bit, five channels: 0 the chosen input as captured (the room mic, the Nadine, the
   piezo), 1 the device's own return of the band's output (the loopback, capture channels 11-12 mixed, as the ring
   holds it: the clicks and the band, sample-aligned with channel 0), 2 the input as the band heard it (the band's
   own sound taken out, `transcribe.echo`; channel 0 again with echo removal off), 3 the room mic (`[device] room`,
-  whichever input the band follows; silence if none). Frame n is the capture's frame n,
-  the stream time the log's times are in.
+  whichever input the band follows; silence if none), 4 the band's own sound as the beat follower was given it
+  beside channel 2 (the canceller's estimate as far as it is sure of it, `sure_estimate`; channel 0 less channel 2
+  is all it subtracted; silence with echo removal off). Sessions from before 2026-10-20 have channels 0-3, and
+  their follower was given channel 0 less channel 2. Frame n is the capture's frame n, the stream time the log's
+  times are in.
 - `session.jsonl`: one JSON object a line, each with `"ev"`: `start` (the settings, the tune and its chart, the
   config's device and band settings), `clock` (L estimated and measured), `count_in` (the clicks, engine frames and
   stream times), `beat` (each beat the band was given), `cue` (each part's play: chord, tone, muted, its time, the

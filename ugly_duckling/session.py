@@ -287,7 +287,8 @@ class Session:
                            "two_bar_bpm": c.two_bar_bpm, "click_db": c.click_db,
                            "transcribe": c.transcribe, "config": str(c.path)},
                      pocket=self.pocket.describe(),
-                     capture_channels=["input", "loopback", "input less the band", "room mic"], rate=RATE,
+                     capture_channels=["input", "loopback", "input less the band", "room mic",
+                                       "the band as the beat follower was given it"], rate=RATE,
                      pruned=getattr(self.rec, "pruned", []))
 
     def _make_echo(self) -> None:
@@ -443,11 +444,13 @@ class Session:
                 c0, t0 = time.perf_counter(), time.thread_time()
                 raw, loop, room = x[k: k + blk, 0], x[k: k + blk, 1], x[k: k + blk, 2]
                 heard = raw if self.echo is None else self.echo.filter(raw, loop).astype(np.float32)
+                band = None if self.echo is None else self._band_estimate(raw, heard)
                 room_out = None if self.room_echo is None else self.room_echo.filter(room, loop)
                 self._levels(raw, heard, loop, room, room_out)
                 if self.rec:
-                    self.rec.audio(np.stack([raw, loop, heard, room], axis=1))
-                self._block(heard, None if self.echo is None else (raw - heard))
+                    self.rec.audio(np.stack([raw, loop, heard, room, np.zeros_like(raw) if band is None else band],
+                                            axis=1))
+                self._block(heard, band)
                 self.read += blk
                 self.compute.append(time.perf_counter() - c0)
                 self.cpu_listen += time.thread_time() - t0
@@ -461,6 +464,14 @@ class Session:
                 self.stop("you stopped playing", wait=False)
             if time.monotonic() - self.last_sounded > idle:
                 self.stop(f"nothing played for {self.cfg.idle_minutes:g} minutes", wait=False)
+
+    def _band_estimate(self, raw: np.ndarray, heard: np.ndarray) -> np.ndarray:
+        """The band's own sound in the input, for the beat follower: the canceller's estimate as far as it is sure of
+        it (`transcribe.echo` `sure_estimate`: a cold canceller can explain the player by the band, whose notes come
+        just before the player's attacks, and its estimate would hide those attacks from the follower); all it
+        subtracted with a transcription project from before it."""
+        sure = getattr(self.echo, "sure_estimate", None)
+        return (raw - heard) if sure is None else sure().astype(np.float32)
 
     def _levels(self, raw, heard, loop, room=None, room_out=None) -> None:
         lv = self.lv

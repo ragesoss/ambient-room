@@ -692,8 +692,43 @@ defaults; the transcription project's `docs/pocket-parameters.md`, "The player's
   estimate swallows the attack's rise. Here the estimate is all spurious (no band in this input), as it would be on
   a pickup with little of the band. With the tune's chart chosen (counted in) the same take ran alike with both (5
   runs); so did Red Wing on the dobro and Down Yonder on the bass. The test for "Any of my tunes" runs with "none";
-  the follower's weighting is the transcription project's to look at before the live band leans on it.
+  the follower's weighting is the transcription project's to look at before the live band leans on it. (Fixed:
+  below, "The pocket and the echo estimate".)
 - Not deployed. No config entry is needed on the unit: without one the band's pocket is "pushed".
+
+### The pocket and the echo estimate (2026-10-20)
+
+The unit runs `pocket = "none"` (`/etc/ugly-duckling.toml`) since the find above; this puts "pushed" back as the
+band's default. The measurements and the reasons are the transcription project's (`docs/findings.md`, "The pocket and
+the echo estimate"; `docs/band-that-follows.md`, the same title); here, the band.
+
+- **The cause:** a cold echo canceller explains the guitar by the band's bass, which sounds the guitar's pitches
+  20-60 ms before its booms ("pushed" adds 4-10 ms): with no band in the input its estimate stood 0-3 dB under the
+  guitar in the low band within 60 ms of the bass's first note, and the follower's weighting (`echo_margin_db`) took
+  the take's two weak booms in beats 2-5. With "none" it took attacks too, but kept those two.
+- **The fix, in the session:** the beat follower is given the canceller's estimate as far as the canceller is sure of
+  it (`session._band_estimate`: the transcription project's `EchoCanceller.sure_estimate`; per bin, the estimate's
+  power by its share of that and the echo the Kalman filter expects it may still miss), in place of all it
+  subtracted (`raw - heard`). What the band hears, the input less the whole estimate, is unchanged. A transcription
+  project from before it (no `sure_estimate`) is given `raw - heard` as before.
+- **The capture has five channels:** channel 4 is the band as the beat follower was given it (`ugly_duckling/record.py`;
+  the start event's `capture_channels`), so a replay gives the follower what the session gave it. Channel 0 less 2
+  is still all the canceller subtracted.
+- **No device, every run with no learnt room** (before: this branch's base with the transcription project's
+  01f1aef): "Any of my tunes", the free guitar take, "pushed": named in 20 of 20 runs at 14.4-19.2 s (before 4 of 10,
+  6 stopped at 6.3 s); "none" 5 of 5 (12.1-19.2 s); "even" 5 of 5 (14.6 s). The tune chosen, 3 runs each pocket: Red
+  Wing (dobro) and Down Yonder (bass) as before (Down Yonder with "pushed" one beat fewer on the chart's root of 55).
+  The band alone in a cold simulated room (`tools/ud_room.py`'s defaults): it stops as before (6 beats at 170 with
+  "pushed", 19 with "none", 15 at 100), and plays through with the dobro takes as before.
+- **Left, as before:** with the guitar take's chart chosen and the guitar preset, "even" and "pushed" stop the band at
+  6.3 s (3 runs of 3, before and after); "none" plays through, and so does "pushed" on the dobro preset (the input's
+  own instrument). The canceller's subtraction itself takes the booms there, not the weighting: a cold canceller's,
+  with no band in the input. On the unit each input starts from the room it learnt; with no device every run starts
+  cold.
+- `tests/test_ud.py`: "Any of my tunes" runs on the default pocket again ("pushed"); the recorded session's capture
+  has five channels, channel 4 no louder than channel 0 less 2.
+- Not deployed. For the unit: the transcription project's `pipeline/src` and this branch, then the `pocket = "none"`
+  line taken out of `/etc/ugly-duckling.toml` by hand.
 
 ### Band sounds: a plan (2026-10-17)
 

@@ -365,7 +365,12 @@ def test_a_session_is_recorded_and_the_band_plays_from_beat_one(tmp_path):
         assert lg.tag[0] == 0 and abs(lg.want - (one + (off * spb + shift / 1000) * RATE)) < 0.001 * RATE, part
     d = s.rec.path
     info = sf.info(str(d / "capture.flac"))
-    assert info.channels == 4 and info.samplerate == RATE and info.duration > 4
+    assert info.channels == 5 and info.samplerate == RATE and info.duration > 4
+    # channel 4, the band as the beat follower had it: the part of the canceller's estimate it is sure of, never more
+    # than all it subtracted (channel 0 less 2); here no band is in the input, so much less
+    y, _ = sf.read(str(d / "capture.flac"), dtype="float64")
+    sure, full = np.sqrt(np.mean(y[:, 4] ** 2)), np.sqrt(np.mean((y[:, 0] - y[:, 2]) ** 2))
+    assert 0 < sure <= full
     log = [_json.loads(x) for x in open(d / "session.jsonl")]
     evs = [e["ev"] for e in log]
     for k in ("start", "count_in", "clock", "beat", "cue", "decision", "level", "stop", "end"):
@@ -390,17 +395,17 @@ def test_any_tune_is_offered_in_the_meters_the_tunes_have():
 
 @needs_band
 def test_with_no_tune_chosen_the_band_names_the_tune_and_follows_its_chart():
-    """The free guitar take (G C G D, 2/4) with no tune chosen, counted in 4: the band plays what it hears, then names
-    the tune (the status shows its title) and plays its chart from the place heard. In the band's old timing (pocket
-    "none"): with "pushed", here, the band stopped after about 10 beats in 7 runs of 10 ("You stopped playing"; PLAN.md,
-    "The pocket": the beat follower's weighting by the echo canceller's estimate, which leads the guitar's booms once
-    the bass is ahead of the beat, and is all spurious here, with no band in this input)."""
+    """The free guitar take (G C G D, 2/4) with no tune chosen, counted in 4, the default pocket ("pushed"): the band
+    plays what it hears, then names the tune (the status shows its title) and plays its chart from the place heard.
+    Before the beat follower was given only the part of the echo canceller's estimate the canceller is sure of, the band
+    stopped here after about 10 beats in 7 runs of 10 with "pushed" ("You stopped playing": a cold canceller explained
+    the guitar's booms by the band's bass just before them, with no band in this input; PLAN.md, "The pocket and the
+    echo estimate")."""
     from ugly_duckling.server import Band
     cfg = load_config(DESKTOP)
     cfg.device.file_tune = "g-c-g-d"
     band = Band(cfg)
-    band.start({"tune": "any", "bpm": 103, "count": "band", "listen_stop": False, "instrument": "guitar",
-                "pocket": "none"})
+    band.start({"tune": "any", "bpm": 103, "count": "band", "listen_stop": False, "instrument": "guitar"})
     s = band.session
     try:
         assert duplex.wait_for(lambda: s.state == "playing", 6.0, 0.05)
@@ -408,6 +413,7 @@ def test_with_no_tune_chosen_the_band_names_the_tune_and_follows_its_chart():
         assert duplex.wait_for(lambda: (band.status().get("find") or {}).get("found") == "g-c-g-d", 40.0, 0.2)
         st = band.status()
         assert st["tune"] == "G C G D (the free guitar take)" and st["find"]["key"] == "G"
+        assert st["pocket"]["name"] == "pushed"
         time.sleep(3.0)
     finally:
         band.stop()
