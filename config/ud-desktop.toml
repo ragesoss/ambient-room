@@ -73,3 +73,8 @@ name = "G C G D (the free guitar take)"
 folder = "guitar/free-2026-10-17"
 bars = "1-16"          # the form; the take's later bars have its own accidents
 
+
+[[tunes]]
+id = "everybody-wants-to-go-to-heaven"
+name = "Everybody Wants to Go to Heaven"
+folder = "bass/everybody-wants-to-go-to-heaven"   # the verse, 18 bars of 2/4, from the player's sung bass take of 2026-10-19

@@ -86,8 +86,10 @@ def test_tunes_give_one_pass_of_each_form():
     assert not problems
     bars = {k: len(t.chart) // t.beats_per_bar for k, t in tunes.items()}
     assert bars == {"red-wing": 16, "down-yonder": 20, "big-sciota": 16, "cherokee-shuffle": 36,
-                    "saint-annes-reel": 32, "tennessee-waltz": 32, "g-c-g-d": 16}
+                    "saint-annes-reel": 32, "tennessee-waltz": 32, "g-c-g-d": 16,
+                    "everybody-wants-to-go-to-heaven": 18}
     assert tunes["tennessee-waltz"].beats_per_bar == 3 and tunes["g-c-g-d"].beats_per_bar == 2
+    assert tunes["everybody-wants-to-go-to-heaven"].beats_per_bar == 2 and tunes["everybody-wants-to-go-to-heaven"].bpm == 85
     assert tunes["red-wing"].bpm == 100 and tunes["down-yonder"].bpm == 120  # its metronome take's
     # Big Sciota's second ending (bar 5 of the file: D D G G) closes the A part's second pass
     assert tunes["big-sciota"].chart[7 * 4: 8 * 4] == [(2, "maj"), (2, "maj"), (7, "maj"), (7, "maj")]
