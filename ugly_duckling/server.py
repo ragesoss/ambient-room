@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from .config import Config, load_config
+from .config import Config, load_config, steady_entry
 from .session import (FOLLOW_DEFAULT, FOLLOW_STEPS, PARTS, PART_NAMES, POCKET_STEPS, Busy, Session, Settings,
                       count_in_plan, selfcheck)
 from .tunes import Tune, load_tunes
@@ -85,6 +85,7 @@ class Band:
                 "voice": {"available": self.voice_why is None, "why": self.voice_why},
                 "count_in": {"two_bar_bpm": c.two_bar_bpm, "bars": ["auto", "1", "2"]},
                 "follow": {"default": FOLLOW_DEFAULT, "steps": list(FOLLOW_STEPS)},
+                "steady": {"default": c.steady_bars, "onset_lead": c.onset_lead},
                 "pocket": {"default": c.pocket,
                            "steps": [s | {"words": c.pocket_for(s["id"]).words(), **self._pocket_numbers(s["id"])}
                                      for s in POCKET_STEPS]},
@@ -171,7 +172,10 @@ class Band:
                 raise ValueError("count_bars: auto, 1 or 2")
             follow = self._follow(body.get("follow", FOLLOW_DEFAULT))
             pocket = self._pocket(body.get("pocket"))
-            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars, follow, pocket)
+            steady = self._steady(body.get("steady", self.cfg.steady_bars))
+            onset_lead = self._onset_lead(body.get("onset_lead", self.cfg.onset_lead))
+            s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars, follow, pocket,
+                         steady, onset_lead)
             words = self.model() if (count == "voice" or listen_stop) else None
             sess = Session(self.cfg, tune, inp, s, self.voicing, words, on_end=self._ended,
                            echo_state=self.echo_state(inp.id), catalog=catalog)
@@ -195,6 +199,27 @@ class Band:
             if "follow" not in LiveBeatParams.__dataclass_fields__:
                 raise ValueError("the transcription project here has no lead-or-follow setting (update it)")
         return follow
+
+    @staticmethod
+    def _steady(value) -> float | None:
+        """The steady band clock from the start request: a width in bars, or "off" (the band's clock as before)."""
+        bars = steady_entry("the start request", value)
+        if bars is not None:
+            from transcribe.livebeat import LiveBeatParams
+            if "steady_bars" not in LiveBeatParams.__dataclass_fields__:
+                raise ValueError("the transcription project here has no steady band clock (update it)")
+        return bars
+
+    @staticmethod
+    def _onset_lead(value) -> bool:
+        """The onset lead from the start request (true or false)."""
+        if not isinstance(value, bool):
+            raise ValueError("onset_lead: true or false")
+        if value:
+            from transcribe import livebeat
+            if not hasattr(livebeat, "ONSET_LEAD_S"):
+                raise ValueError("the transcription project here has no onset lead (update it)")
+        return value
 
     def _pocket(self, value) -> str:
         """The pocket from the start request: a step's id (`POCKET_STEPS`); none given, the config's."""

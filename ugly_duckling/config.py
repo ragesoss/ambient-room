@@ -107,6 +107,12 @@ class Config:
     pocket: str = pockets.DEFAULT
     pocket_parts: dict = field(default_factory=dict)
     pocket_seed: int = pockets.SEED
+    # the steady band clock (the transcription project's `livebeat` `steady_bars`): the width in bars a start gets
+    # unless it names another (the start request's `steady`); None: the band's clock as before. And the band's beats
+    # on the player's attacks rather than on their onset function's peaks (`livebeat.ONSET_LEAD_S`, the bass's 20 ms;
+    # the start request's `onset_lead`). Both off until the player has chosen them by ear
+    steady_bars: float | None = None
+    onset_lead: bool = False
     record: RecordConfig = field(default_factory=RecordConfig)
 
     def pocket_for(self, name: str | None = None) -> pockets.Pocket:
@@ -133,6 +139,23 @@ def pocket_entry(path: Path, raw) -> tuple[str, dict, int]:
     except ValueError as e:
         raise ValueError(f"{path}: [band] pocket: {e}")
     return name, parts, seed
+
+
+STEADY_RANGE = (0.25, 16.0)  # bars
+
+
+def steady_entry(where, raw) -> float | None:
+    """`[band] steady_bars` (or the start request's `steady`): a width in bars within `STEADY_RANGE`, or none (absent,
+    "off", false): the band's clock as before. Checked here (ValueError)."""
+    if raw is None or raw is False or raw == "off":
+        return None
+    try:
+        bars = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"{where}: steady: a width in bars ({STEADY_RANGE[0]:g}-{STEADY_RANGE[1]:g}) or off")
+    if not STEADY_RANGE[0] <= bars <= STEADY_RANGE[1]:
+        raise ValueError(f"{where}: steady: a width in bars ({STEADY_RANGE[0]:g}-{STEADY_RANGE[1]:g}) or off")
+    return bars
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -175,5 +198,7 @@ def load_config(path: Path | None = None) -> Config:
         stop_beats=int(band.get("stop_beats", 5)),
         noise_gate_db=float(band.get("noise_gate_db", 6.0)),
         pocket=pocket, pocket_parts=pocket_parts, pocket_seed=pocket_seed,
+        steady_bars=steady_entry(path, band.get("steady_bars")),
+        onset_lead=bool(band.get("onset_lead", False)),
         record=RecordConfig(**{k: v for k, v in raw.get("record", {}).items()}),
     )
