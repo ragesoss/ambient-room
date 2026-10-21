@@ -2,8 +2,9 @@
 
 How the Ugly Duckling String Band and the ambient synth's acoustic voices
 get better, one audible step at a time. Mostly by making our own sample
-sets from the player's instruments and, later, other players'. A plan
-only: nothing here is built yet.
+sets from the player's instruments and, later, other players'. A plan;
+since 2026-10-20 its extraction is built (`tools/samples.py`, below,
+"Extraction: from takes to samples") and has been run on the takes in hand.
 
 The player: "sketch out a plan for incrementally improving band sounds...
 which probably means making our own soundfonts and gradually improving them
@@ -36,9 +37,9 @@ will help)".
   - `upright.sf2`: 8 pitches, the rest stretched, one dynamic, notes cut
     where the next was played;
   - `dobro.sf2`: 17 pitches, one dynamic, no strings told apart.
-  Both are built by scripts (`tools/upright_font.py`; dobro-transcription
-  `dobro-soundfont/tools/build.py`, with a minimal SF2 writer,
-  `sf2write.py`).
+  Both are built by scripts (`tools/samples.py` from `sounds/samples/upright.json`
+  since 2026-10-20; dobro-transcription `dobro-soundfont/tools/build.py`,
+  with a minimal SF2 writer, `sf2write.py`).
 - **What helps:** the transcription pipeline already finds onsets, pitch
   to about a cent, the string a note is on (`fretting`, `timbre`), and a
   guitar's strokes, boom or chuck (`strokes`). The exercise app on the
@@ -182,11 +183,52 @@ what it found, so a sample's history is in a file.
    dobro's, `~/Dropbox/dobro-soundfont/recordings/`); the builds are
    reproducible from both.
 
-The first version of this pipeline is the generalisation of
-`tools/upright_font.py` and the dobro's `build.py`: the same stages, with
-the instrument a parameter. It can start on the takes we already have
-(guitar exercises 001-003, the three guitar tunes, every bass take)
-before a session, as the upright font did.
+**Built (2026-10-20): `tools/samples.py`,** the generalisation of the
+upright's first build and the dobro's `build.py`: `collect`, `report`,
+`choose` and `build`, the instrument a profile (`upright`, `guitar`). What
+it does beyond the list above, and how:
+
+- **The exercise app's click comes out first.** The takes over a click
+  hold it, and through the old mixer (2026-10-13/14) it was recorded
+  electrically, as loud as a note: the upright's E1 and G2 of 2026-10-15
+  clicked on every note. The click's place comes from the take's sidecar;
+  each kind is a median template over the take's clicks, fitted to each by
+  a fraction of a sample and a gain (the transcription project's
+  `transcribe.click`), and any left over a note's ring is gated to the
+  sound around it. Then a check on every cut sample: no 5 ms of 2-8 kHz
+  standing 12 dB over its neighbourhood within 35 dB of the note.
+- **A take with a key** is transcribed as that project's bench does and
+  matched to its key; **a take with a chart** (the guitar's tunes) gives
+  its strokes, a boom labelled by its bass note and a chuck by the chart's
+  chord, each checked (the boom a chord tone, the chuck's chroma the
+  chord's root).
+- **The other checks:** a clean start (10 dB over the 50 ms before; a
+  stroke's own band's rise), long enough (0.5 s; a boom 0.17, a chuck
+  0.09), the pitch (pYIN within 4 semitones of the label, refined from the
+  partials, and an octave test), the note before still ringing (its own
+  partials within 20 dB), the backing or a voice in the room (a bass's
+  1.5-6 kHz within 40 dB of it), the string (`timbre`, one take left out),
+  clipping. A sound late in the ring (the hand coming back) ends the cut
+  before it. A bowed note gets loop points (a whole number of periods, the
+  seam crossfaded) or is flagged.
+- **The map is the source** (`sounds/samples/INSTRUMENT.json`, in git), the
+  candidates beside it; the WAVs in `~/.cache/ambient-room/samples/`; an
+  entry `pinned` is kept by `choose`. The upright's 2026-10-15 samples are
+  pinned there, cut as they were: built from them alone, the font is the
+  same file byte for byte.
+
+**What the takes in hand give** (the transcription project's findings,
+"The band's sounds", has the tables): the bass, 19 of the 28 semitones
+E1-G3 through the Nadine on the 18i8 with a clean candidate (282 of 1089),
+16 on the piezo, 13 through the old mixer; none on any chain for D#2, A#2,
+C#3 and D#3 to G3; most 0.5-0.9 s long (cut by the next note), 4 s only on
+the open strings and a few held notes; 25 bowed notes on 8 pitches with a
+loop. The guitar: 29 single notes on 15 of the 37 semitones E2-E5, 0.7 s
+(1.4-1.5 s on the open B and E and a G4); 99 booms on 8 pitches (G2 33, D3
+25, A2 23; a median 0.35 s, rung to the chuck after); 214 chucks across 9 chords as
+the tunes play them, 0.1-0.4 s each (A, with the capo at the 2nd fret, 80;
+D 48; G 37). Enough for round robins of a chuck; not for a bass or guitar
+font of every semitone: the sessions above are still needed.
 
 ## SF2 or SFZ, and the engine
 
@@ -278,6 +320,9 @@ Each step ends with A/B renders for the player.
    - Before the session: the extraction pipeline, generalised from
      `upright_font.py`, run on the takes we have (the bass's, guitar
      exercises 001-003, the guitar tunes). Shows what is already usable.
+     Done 2026-10-20 (`tools/samples.py`; above, "What the takes in hand
+     give"); its first use, the upright's clicking E1, waits on the
+     player's ear.
    - **The bass:** a session as exercises, every semitone E1 to G3, three
      dynamics, two round robins, let ring 4 s and stopped after one beat,
      through the Nadine and the piezo at once. Fills the stretched notes

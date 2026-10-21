@@ -1,0 +1,324 @@
+{
+ "instrument": "upright",
+ "about": "the player's upright bass (a New Standard Cleveland, Pirastro Perpetual Stark strings)",
+ "font": "upright.sf2",
+ "font_name": "UprightBassPrototype",
+ "presets": {
+  "pizz": [
+   "Upright bass (Cleveland)",
+   0,
+   32
+  ],
+  "arco": [
+   "Upright bass, bowed (Cleveland)",
+   0,
+   43
+  ]
+ },
+ "level_rms": 0.12,
+ "release_s": 0.25,
+ "samples": [
+  {
+   "name": "E1 4-0",
+   "root": 28,
+   "articulation": "pizz",
+   "chain": "mixer, Nadine",
+   "string": 4,
+   "fret": 0,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "exercises/bass/008-low-chromatic/take-01.flac",
+   "source": "exercises/bass/008-low-chromatic/take-01.flac",
+   "onset": 18.7501,
+   "session": "2026-10-14-bass",
+   "candidate": "exercises/bass/008-low-chromatic/take-01@18750",
+   "cut": {
+    "start": 900749,
+    "end": 1092893,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": true,
+    "gate": [
+     36643,
+     76643
+    ]
+   },
+   "rate": 48000,
+   "tuning_cents": 9.0,
+   "level_db": -34.3,
+   "length": 4.003,
+   "loop": null,
+   "clicks_taken_out_ms": [
+    763,
+    1597
+   ],
+   "keys": [
+    0,
+    29
+   ]
+  },
+  {
+   "name": "G1 4-3",
+   "root": 31,
+   "articulation": "pizz",
+   "chain": "18i8, Nadine",
+   "string": 4,
+   "fret": 3,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "exercises/bass/007-octaves/take-02.flac",
+   "source": "exercises/bass/007-octaves/take-02.flac",
+   "onset": 18.6514,
+   "session": "2026-10-14-bass-18i8",
+   "candidate": "exercises/bass/007-octaves/take-02@18651",
+   "cut": {
+    "start": 895938,
+    "end": 1088083,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": false,
+    "gate": []
+   },
+   "rate": 48000,
+   "tuning_cents": -6.071447765193255,
+   "level_db": -29.5,
+   "length": 4.003,
+   "loop": null,
+   "pinned": "the 2026-10-15 font (tools/upright_font.py), as the player has heard it",
+   "keys": [
+    30,
+    32
+   ]
+  },
+  {
+   "name": "A1 3-0",
+   "root": 33,
+   "articulation": "pizz",
+   "chain": "18i8, Nadine",
+   "string": 3,
+   "fret": 0,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "exercises/bass/013-waltz/take-01.flac",
+   "source": "exercises/bass/013-waltz/take-01.flac",
+   "onset": 14.0597,
+   "session": "2026-10-14-bass-18i8",
+   "candidate": "exercises/bass/013-waltz/take-01@14060",
+   "cut": {
+    "start": 675537,
+    "end": 743169,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": false,
+    "gate": []
+   },
+   "rate": 48000,
+   "tuning_cents": 9.289105650042195,
+   "level_db": -27.0,
+   "length": 1.409,
+   "loop": null,
+   "pinned": "the 2026-10-15 font (tools/upright_font.py), as the player has heard it",
+   "keys": [
+    33,
+    34
+   ]
+  },
+  {
+   "name": "C2 3-3",
+   "root": 36,
+   "articulation": "pizz",
+   "chain": "18i8, Nadine",
+   "string": 3,
+   "fret": 3,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "exercises/bass/013-waltz/take-01.flac",
+   "source": "exercises/bass/013-waltz/take-01.flac",
+   "onset": 9.5492,
+   "session": "2026-10-14-bass-18i8",
+   "candidate": "exercises/bass/013-waltz/take-01@9549",
+   "cut": {
+    "start": 458312,
+    "end": 525561,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": false,
+    "gate": []
+   },
+   "rate": 48000,
+   "tuning_cents": 12.888180949599306,
+   "level_db": -29.9,
+   "length": 1.401,
+   "loop": null,
+   "pinned": "the 2026-10-15 font (tools/upright_font.py), as the player has heard it",
+   "keys": [
+    35,
+    37
+   ]
+  },
+  {
+   "name": "D2 2-0",
+   "root": 38,
+   "articulation": "pizz",
+   "chain": "18i8, Nadine",
+   "string": 2,
+   "fret": 0,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "tunes/bass/down-yonder-2/take-01.flac",
+   "source": "tunes/bass/down-yonder-2/take-01.flac",
+   "onset": 24.5841,
+   "session": "2026-10-14-bass-18i8",
+   "candidate": "tunes/bass/down-yonder-2/take-01@24584",
+   "cut": {
+    "start": 1179916,
+    "end": 1275364,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": false,
+    "gate": []
+   },
+   "rate": 48000,
+   "tuning_cents": 1.2823828280984397,
+   "level_db": -27.9,
+   "length": 1.988,
+   "loop": null,
+   "pinned": "the 2026-10-15 font (tools/upright_font.py), as the player has heard it",
+   "keys": [
+    38,
+    40
+   ]
+  },
+  {
+   "name": "G2 1-0",
+   "root": 43,
+   "articulation": "pizz",
+   "chain": "mixer, Nadine",
+   "string": 1,
+   "fret": 0,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "exercises/bass/001-open-strings/take-01.flac",
+   "source": "exercises/bass/001-open-strings/take-01.flac",
+   "onset": 31.8462,
+   "session": "2026-10-13-bass",
+   "candidate": "exercises/bass/001-open-strings/take-01@31846",
+   "cut": {
+    "start": 1529073,
+    "end": 1721217,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": true,
+    "gate": [
+     36288,
+     72288
+    ]
+   },
+   "rate": 48000,
+   "tuning_cents": -0.6280435500870882,
+   "level_db": -34.3,
+   "length": 4.003,
+   "loop": null,
+   "pinned": "the 2026-10-15 font (tools/upright_font.py), as the player has heard it; its app clicks taken out of the same cut (tools/samples.py, 2026-10-20)",
+   "keys": [
+    41,
+    44
+   ],
+   "clicks_taken_out_ms": [
+    6,
+    756,
+    1506
+   ]
+  },
+  {
+   "name": "A2 1-2",
+   "root": 45,
+   "articulation": "pizz",
+   "chain": "18i8, Nadine",
+   "string": 1,
+   "fret": 2,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "exercises/bass/007-octaves/take-02.flac",
+   "source": "exercises/bass/007-octaves/take-02.flac",
+   "onset": 8.87,
+   "session": "2026-10-14-bass-18i8",
+   "candidate": "exercises/bass/007-octaves/take-02@8870",
+   "cut": {
+    "start": 425856,
+    "end": 461472,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": false,
+    "gate": []
+   },
+   "rate": 48000,
+   "tuning_cents": 29.913804879284932,
+   "level_db": -29.0,
+   "length": 0.742,
+   "loop": null,
+   "pinned": "the 2026-10-15 font (tools/upright_font.py), as the player has heard it",
+   "keys": [
+    45,
+    47
+   ]
+  },
+  {
+   "name": "D3 1-7",
+   "root": 50,
+   "articulation": "pizz",
+   "chain": "18i8, Nadine",
+   "string": 1,
+   "fret": 7,
+   "velocity": [
+    0,
+    127
+   ],
+   "round_robin": 0,
+   "take": "exercises/bass/007-octaves/take-02.flac",
+   "source": "exercises/bass/007-octaves/take-02.flac",
+   "onset": 10.3735,
+   "session": "2026-10-14-bass-18i8",
+   "candidate": "exercises/bass/007-octaves/take-02@10374",
+   "cut": {
+    "start": 498600,
+    "end": 532248,
+    "fade_in": 96,
+    "fade_out": 5760,
+    "declick": false,
+    "gate": []
+   },
+   "rate": 48000,
+   "tuning_cents": 25.85804869639118,
+   "level_db": -35.3,
+   "length": 0.701,
+   "loop": null,
+   "pinned": "the 2026-10-15 font (tools/upright_font.py), as the player has heard it",
+   "keys": [
+    48,
+    127
+   ]
+  }
+ ]
+}

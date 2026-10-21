@@ -13,7 +13,7 @@
   modification and redistribution; ~/.local/share/sounds/sf2/), the
   banjo's looped attack saw left out. The player chose them over
   FluidR3's, MuseScore's MS Basic and FlameStudios' Kay banjo (2026-10-15).
-- sounds/upright.sf2 is built by tools/upright_font.py (the player's own
+- sounds/upright.sf2 is built by tools/samples.py (the player's own
   upright bass, from the transcription project's takes); here it is only
   normalised.
 
@@ -235,7 +235,7 @@ def main() -> None:
     shutil.copyfile(DOBRO, OUT / FONTS["dobro"])
     print(f"{OUT / FONTS['dobro']}: copied from {DOBRO}")
     for font in FONTS.values():
-        if not (OUT / font).exists():  # upright.sf2 comes from tools/upright_font.py
+        if not (OUT / font).exists():  # upright.sf2 comes from tools/samples.py build upright
             print(f"{OUT / font}: missing (its voices play their synthesized models)")
             continue
         print(f"{OUT / font}: normalised for the Pi's Csound: {normalise(OUT / font)}")

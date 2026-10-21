@@ -776,6 +776,27 @@ will help)". The plan is `docs/sound-plan.md`. In short:
 - **Other players' instruments** through the website, under one stated open licence for the project's fonts;
   GeneralUser GS and FluidR3 keep their own terms. Twelve open questions for the player at its end.
 
+### Samples from takes, and the upright's low E (2026-10-20)
+
+The sound plan's extraction, built: `tools/samples.py collect|report|choose|build INSTRUMENT` (`upright`, `guitar`),
+one tool for every instrument (`docs/sound-plan.md`, "Extraction: from takes to samples", has the stages and what the
+takes in hand give). It reads the transcription project's takes and pipeline (and its new `transcribe.click`), writes
+every candidate and its checks to `sounds/samples/INSTRUMENT-candidates.json`, the chosen samples to a map in git
+(`sounds/samples/INSTRUMENT.json`), the cut WAVs to `~/.cache/ambient-room/samples/`, and the SF2 from the map. It
+replaces `tools/upright_font.py`: the upright's 2026-10-15 samples are the map's pinned entries, and built from them
+alone the font is the same file byte for byte (`tests/test_samples.py` checks the writer against the dobro font's).
+
+- **The upright's low E clicked** (the transcription project's board, `the-upright-s-e1-sample-clicks-65`): the
+  exercise app's click, which the old mixer recorded into the take electrically, sat 64 ms and 0.81 s into the E1
+  sample (E1 and F1), 46 dB over the note's ring at 2-8 kHz and about as loud as the note there; the G2 (F2-G#2,
+  which only the ambient synth plays) had it on its attack and at 0.76 and 1.51 s. The tool takes the click out of a
+  take before it cuts; the map now has the E1 it chose (bass exercise 008's, 14 October, 4 s, its clicks taken out)
+  and the old G2 with its clicks taken out. In the band's bass on Cherokee Shuffle's A part (24 E1s in 64 notes) the
+  burst is gone: nothing within 35 dB of the note.
+- **Heard by the player** before it ships: the transcription project's review `2026-10-20-upright-e1` (the font as
+  it is, the tool's E1, the old E1 with its clicks taken out; blind, loudness matched). Not deployed: the unit has the
+  2026-10-15 font. Needs the transcription project's matching commit (`transcribe.click`).
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.

@@ -39,16 +39,34 @@ files are not in git: `tools/soundfonts` builds them here, and
   rings until its string is picked again (at most 4 s), a nearby note on the
   same string now and then slides there with no new pick, and a longer note
   is now and then slid into from a fret or two below.
-- `upright.sf2` (built by `tools/upright_font.py`, 2026-10-15): the player's
-  own upright bass (a New Standard Cleveland, Pirastro Perpetual Stark
-  strings), plucked, through the Nadine on its afterlength: 8 notes from the
-  bass exercise takes in `~/play/dobro-transcription` (E1 G1 A1 C2 D2 G2,
-  1.4-4 s; A2 and D3, 0.7 s), each the longest clean one played, cut at its
-  pluck, the semitones between stretched from a neighbour
-  (`upright-selection.json`; the candidates in `upright-candidates.json`). A
-  prototype: the takes were not made for sampling, so the notes stop where
-  the next was played. It replaces FluidR3's acoustic bass for the Upright
-  voice, 6.6 dB louder in the voice's trim to the same level.
+- `upright.sf2` (first built 2026-10-15): the player's own upright bass (a
+  New Standard Cleveland, Pirastro Perpetual Stark strings), plucked, through
+  the Nadine on its afterlength: 8 notes from the bass exercise takes in
+  `~/play/dobro-transcription` (E1 G1 A1 C2 D2 G2, 1.4-4 s; A2 and D3,
+  0.7 s), each the longest clean one played, cut at its pluck, the semitones
+  between stretched from a neighbour. A prototype: the takes were not made
+  for sampling, so the notes stop where the next was played. It replaces
+  FluidR3's acoustic bass for the Upright voice, 6.6 dB louder in the
+  voice's trim to the same level.
+  - **Built from its sample map** since 2026-10-20: `samples/upright.json`
+    (in git: each sample's take, cut, tuning and key range), by
+    `tools/samples.py build upright` (the WAVs cut into
+    `~/.cache/ambient-room/samples/upright/`), then `tools/soundfonts`. The
+    map's entries marked `pinned` are the 2026-10-15 font's, cut as it was
+    (`tools/upright_font.py`, retired): built from them alone the font is
+    the same file, byte for byte.
+  - **The E1 clicked** (and F1, played from it): the exercise app's click,
+    which the old mixer (sessions 2026-10-13/14) recorded into the take
+    electrically, 64 ms and 0.81 s into the sample, 46 dB over the note's
+    ring at 2-8 kHz and as loud as the note there; the G2 (F2-G#2) the same,
+    on its attack and at 0.76 and 1.51 s. The map now has the E1 the sample
+    tool chose (exercise 008's, 4 s, its clicks taken out) and the same G2
+    with its clicks taken out. The unit still has the 2026-10-15 font until
+    the player has chosen by ear (the transcription project's review
+    `2026-10-20-upright-e1`).
+  - `samples/upright-candidates.json`: every note the tool found in the
+    bass takes, with its checks (what the takes in hand give: the tool's
+    `report`).
 
 Measured, 2026-10-11:
 
