@@ -326,6 +326,50 @@ def test_the_beat_params_carry_lead_or_follow_only_when_not_the_default():
     assert hold == replace(lead, follow=0.0)
 
 
+@needs_band
+def test_the_steady_clock_and_the_onset_lead_are_off_unless_asked():
+    """The steady band clock and the onset lead: off in the config and the start request unless named, then passed to
+    the follower (the onset lead only where the transcription project has measured one: the bass); a width out of
+    range refused."""
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+    from transcribe.livebeat import ONSET_LEAD_S, PRESETS
+    from ugly_duckling.config import steady_entry
+    from ugly_duckling.server import Band, create_app
+    from ugly_duckling.session import Session, Settings
+    cfg = load_config(DESKTOP)
+    assert cfg.steady_bars is None and cfg.onset_lead is False
+    for name in ("ud-pi.toml", "ud-desktop.toml"):
+        c = load_config(REPO / "config" / name)
+        assert c.steady_bars is None and c.onset_lead is False, name
+    assert steady_entry("x", None) is None and steady_entry("x", "off") is None and steady_entry("x", 2) == 2.0
+    b = Band(cfg)
+    tune, inp = b.tunes["red-wing"], b.inputs["take"]
+    base = replace(PRESETS["bass"], stop_beats=cfg.stop_beats, noise_gate_db=cfg.noise_gate_db)
+    params = lambda **kw: Session(cfg, tune, inp, Settings("red-wing", 100.0, "take", "bass", **kw),
+                                  b.voicing)._beat_params()
+    assert params() == base
+    assert params(steady=2.0) == replace(base, steady_bars=2.0)
+    assert params(steady=1.0, follow=0.25, onset_lead=True) == replace(base, steady_bars=1.0, follow=0.25,
+                                                                      onset_lead_s=ONSET_LEAD_S["bass"])
+    dobro = Session(cfg, tune, inp, Settings("red-wing", 100.0, "take", "dobro", onset_lead=True), b.voicing)
+    assert dobro._beat_params() == replace(PRESETS["dobro"], stop_beats=cfg.stop_beats,
+                                           noise_gate_db=cfg.noise_gate_db)  # none measured for the dobro
+    with TestClient(create_app(cfg)) as c:
+        assert c.get("/api/options").json()["steady"] == {"default": None, "onset_lead": False}
+        for bad in ({"steady": 0.1}, {"steady": 40}, {"steady": "wide"}, {"onset_lead": "yes"}):
+            r = c.post("/api/start", json={"tune": "red-wing", "listen_stop": False} | bad)
+            assert r.status_code == 400, bad
+        for given, want in (({}, (None, False)), ({"steady": 2}, (2.0, False)), ({"steady": "off"}, (None, False)),
+                            ({"steady": 1, "onset_lead": True}, (1.0, True))):
+            r = c.post("/api/start", json={"tune": "red-wing", "listen_stop": False} | given)
+            assert r.status_code == 200, r.text
+            st = r.json()["settings"]
+            assert (st["steady"], st["onset_lead"]) == want, given
+            c.post("/api/stop")
+
+
 def test_old_sessions_are_pruned_by_count_and_size(tmp_path):
     from ugly_duckling.record import prune
     for k in range(5):

@@ -4,7 +4,8 @@ it measured. With the desktop's config (`config/ud-desktop.toml`: no device, a r
 whole loop runs and nothing is heard.
 
     tools/ud_run.py [--config config/ud-desktop.toml] [--tune red-wing] [--bpm N] [--seconds 30] [--count band|voice]
-        [--input ID] [--instrument dobro] [--follow hold|gentle|lead|0-1] [--pocket pushed|even|none] [--json OUT]
+        [--input ID] [--instrument dobro] [--follow hold|gentle|lead|0-1] [--pocket pushed|even|none]
+        [--steady BARS|off] [--onset-lead] [--json OUT]
 
 Each second: the state, the beat and chord, the parts; at the end: the clock (L estimated and measured), every
 cue's margin when it reached the engine (min, median), late and dropped notes, underruns, the listening's and the
@@ -113,6 +114,10 @@ def main() -> None:
     ap.add_argument("--follow", default="lead", help="lead or follow: hold, gentle, lead (the default), or 0-1")
     ap.add_argument("--pocket", default=None, help="where each part sits against the beat: pushed, even, none "
                     "(default: the config's)")
+    ap.add_argument("--steady", default=None, help="the steady band clock's width in bars, or off (default: the "
+                    "config's)")
+    ap.add_argument("--onset-lead", action="store_true", help="the band's beats on the player's attacks, not on "
+                    "their onset function's peaks (the bass's 20 ms)")
     ap.add_argument("--json", default=None)
     ap.add_argument("--logs", type=int, default=0, help="print the band's first N beats' logs")
     a = ap.parse_args()
@@ -130,6 +135,10 @@ def main() -> None:
     body = {"tune": a.tune, "bpm": a.bpm, "count": a.count, "input": a.input, "instrument": a.instrument,
             "volume_db": a.volume, "listen_stop": False,
             "count_bars": a.count_bars, "follow": a.follow, "pocket": a.pocket}
+    if a.steady is not None:
+        body["steady"] = a.steady
+    if a.onset_lead:
+        body["onset_lead"] = True
     band.start(body)
     sess = band.session
     t0 = time.monotonic()
@@ -143,7 +152,8 @@ def main() -> None:
     timing = sess.timing()
     band.stop()
     ended = sess.ended - sess.started if sess.ended else None
-    report = {"tune": a.tune, "follow": sess.s.follow, "pocket": sess.pocket.describe(),
+    report = {"tune": a.tune, "follow": sess.s.follow, "steady": sess.s.steady, "onset_lead": sess.s.onset_lead,
+              "pocket": sess.pocket.describe(),
               "status": sess.status()["state"], "error": sess.error,
               "message": sess.message,
               "stop_reason": sess._stop_reason, "stream_s": round(sess.read / RATE, 2), "ran_s": ended,

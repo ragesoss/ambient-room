@@ -22,7 +22,8 @@ What happens in between (in a thread of its own; the device and the band's sound
 3. **Listening.** The capture is read from the ring in `in_block` frames and pushed to the band; each part's
    play (`band.Cue`) goes to the band player as it comes, unless that part is off. With voice on, "stop" stops
    the band (a click start: the whole run). How much the band takes the player's tempo is the player's lead or
-   follow (`Settings.follow`, `FOLLOW_STEPS`): from the count's tempo held to the player leading. Where each part
+   follow (`Settings.follow`, `FOLLOW_STEPS`): from the count's tempo held to the player leading; how steadily, the
+   steady clock's width (`Settings.steady`, off by default; and `Settings.onset_lead`). Where each part
    sits against the band's beat is its pocket (`Settings.pocket`, `POCKET_STEPS`, `ambient/pocket.py`): the band
    player moves each play's notes by it before they go to the engine.
    **No tune chosen** ("Any of my tunes", `catalog`): the band starts with no chart and plays what it hears; once
@@ -100,6 +101,12 @@ class Settings:
     count_bars: str = "auto"  # the band's count-in: "1", "2" bars, or "auto" (two at or above `two_bar_bpm`)
     follow: float = FOLLOW_DEFAULT  # lead or follow (`FOLLOW_STEPS`): 1 the player leads, 0 the band holds the tempo
     pocket: str = pockets.DEFAULT  # where each part sits against the beat (`POCKET_STEPS`, `Config.pocket_for`)
+    # the steady band clock (the transcription project's `livebeat.LiveBeatParams.steady_bars`): its phase comes to
+    # the player's beats over about this many bars, its tempo over one; None: the band's clock as before
+    steady: float | None = None
+    # the band's beats on the player's attacks, not on their onset function's peaks (`livebeat.ONSET_LEAD_S`: the
+    # bass's 20 ms); False: as before
+    onset_lead: bool = False
 
 
 def count_in_plan(cfg: Config, bpm: float, beats_per_bar: int, count: str = "band", bars: str = "auto") -> dict:
@@ -409,13 +416,18 @@ class Session:
         return True
 
     def _beat_params(self):
-        """The beat follower's preset for the instrument, with the band's stop rule (`stop_beats`) and the player's
-        lead or follow (`follow`; passed only when it is not the default, so that an older transcription project
-        still runs the default)."""
+        """The beat follower's preset for the instrument, with the band's stop rule (`stop_beats`), the player's
+        lead or follow (`follow`), the steady clock (`steady`) and the onset lead (`onset_lead`, where the
+        transcription project has measured one for the instrument), each passed only when it is not the default, so
+        that an older transcription project still runs the default."""
         from dataclasses import replace
-        from transcribe.livebeat import PRESETS
+        from transcribe import livebeat
         lead = {} if self.s.follow == FOLLOW_DEFAULT else {"follow": self.s.follow}
-        return replace(PRESETS[self.s.instrument], stop_beats=self.cfg.stop_beats,
+        if self.s.steady is not None:
+            lead["steady_bars"] = float(self.s.steady)
+        if self.s.onset_lead and getattr(livebeat, "ONSET_LEAD_S", {}).get(self.s.instrument):
+            lead["onset_lead_s"] = livebeat.ONSET_LEAD_S[self.s.instrument]
+        return replace(livebeat.PRESETS[self.s.instrument], stop_beats=self.cfg.stop_beats,
                        noise_gate_db=self.cfg.noise_gate_db, **lead)
 
     def _band_tunes(self):

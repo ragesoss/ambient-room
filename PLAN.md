@@ -730,6 +730,34 @@ the echo estimate"; `docs/band-that-follows.md`, the same title); here, the band
 - Not deployed. For the unit: the transcription project's `pipeline/src` and this branch, then the `pocket = "none"`
   line taken out of `/etc/ugly-duckling.toml` by hand.
 
+### The steady band clock (2026-10-20)
+
+The player, on the band's challenge: "The band needs to keep a pretty steady tempo with all changes as gradual as
+possible while still keeping aligned with the downbeats I play." The clock is the transcription project's
+(`livebeat.LiveBeatParams.steady_bars`, `onset_lead_s`; its `docs/band-that-follows.md` and `docs/findings.md`, "A
+steady band clock", have the design and the numbers); here, the settings that reach it. Both off until the player has
+chosen by ear.
+
+- **The steady clock** (`Settings.steady`, bars; None the band's clock as before): the band's phase comes to the
+  player's beats over about that many bars, its tempo over one, the chase opening both for a quick lasting change.
+  "Who leads" scales it as it scales the band's clock now ("gently" four times as wide, "hold" holds), for every
+  instrument and either count. The config's `[band] steady_bars` (absent: off) is the default a start gets; the start
+  request's `steady` (a width in bars, 0.25-16, or "off") overrides it; `/api/options` gives the default.
+- **The onset lead** (`Settings.onset_lead`; `[band] onset_lead`, the start request's `onset_lead`): the band's beats
+  on the player's attacks rather than on their onset function's peaks, by the transcription project's
+  `livebeat.ONSET_LEAD_S` for the instrument (the bass's 20 ms; none for the dobro and the guitar, so it changes
+  nothing there). Under a bass the band was a median 19 ms early on the sung take; this takes it to 1 ms late.
+- Both go to the beat follower only when set (`Session._beat_params`), so an older transcription project runs the
+  default; one without them refuses a start that asks for them. The session's start event has both in its settings.
+  `tools/ud_run.py --steady BARS --onset-lead`.
+- **No device** (`tools/ud_run.py`, Red Wing's take, the desktop config, 30 s): with `--steady 1` the band's tempo moved
+  a median 0.28% a beat against 1.92% without, 46 beats each, every cue on time (45 a part, none late or dropped).
+- **Not on the page yet**: the width is the player's choice from the renders of the sung take (the transcription
+  project's `exercises/observations/ud-oracle-2026-10-19/live-lines/`); then a control under "Who leads", or the
+  steps re-cut (hold, the steady clock at the chosen width, beat-by-beat lead). `tests/test_ud.py`: off unless asked,
+  passed when asked, the onset lead only where one is measured, widths out of range refused.
+- Not deployed. Needs the transcription project's matching commit.
+
 ### Band sounds: a plan (2026-10-17)
 
 The player: "sketch out a plan for incrementally improving band sounds... which probably means making our own
