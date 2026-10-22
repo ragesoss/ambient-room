@@ -366,8 +366,8 @@ Each step ends with A/B renders for the player.
    contributor's, or a CC0 set if one is good enough; question 2).
 7. **Other players' instruments** through the website (below): a second
    guitar, banjo, mandolin, fiddle, as presets of their own.
-8. **Publishing 1.0** of each font the player is happy with: generic names,
-   a README with the instrument, the chain and the licence.
+8. **Publishing 1.0** of each font the player is happy with: generic names
+   (below, "Names"), a README with the instrument, the chain and the licence.
 
 Steps 2-4 can change order with what the player has at hand and wants to
 hear first.
@@ -402,9 +402,17 @@ contributor's takes serve twice.
   - every contributed instrument is a preset of its own, not mixed into
     another's key range: two instruments within one preset change timbre
     from note to note.
-- **Names:** an instrument is described by its maker in the README, but a
-  preset is named generically ("Resonator guitar, squareneck"): Dobro and
-  Beard are trademarks (`dobro-soundfont/PLAN.md`).
+- **Names** (decided 2026-10-22): generic, never a maker's (Dobro, Beard,
+  Martin and Silvertone are trademarks); the maker and model only in the
+  README, as where the samples came from. A font is named by the style it is
+  played in and the instrument, since the playing is in the samples: "Bluegrass
+  Banjo" (a resonator banjo with fingerpicks, Scruggs style), "Bluegrass
+  Guitar" (a dreadnought with a flatpick), "Bluegrass Bass" (the upright as a
+  bluegrass bassist plays it), and so on; the same instrument in another style
+  would be sampled differently and named for it (the player: "we might sample
+  differently for, like Jazz Manouche"). The resonator guitar comes in two, a
+  modern one (the Beard; a Rayco or another modern design) and a vintage one
+  (the 60D), which sound "pretty different" (the player).
 
 ## Licensing
 
