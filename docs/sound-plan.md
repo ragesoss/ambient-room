@@ -367,7 +367,14 @@ Each step ends with A/B renders for the player.
 7. **Other players' instruments** through the website (below): a second
    guitar, banjo, mandolin, fiddle, as presets of their own.
 8. **Publishing 1.0** of each font the player is happy with: generic names
-   (below, "Names"), a README with the instrument, the chain and the licence.
+   (below, "Names"), the extracted samples (FLAC) beside the SF2 and SF3,
+   a README with the instrument, the chain and the licence.
+
+The player (2026-10-22), on the published fonts: "i want to build the dobro
+font from my samples, but i think most others will be better done with
+contributed recordings. we'll handle naming and release as the project
+goes... whenever we have enough for a good release of a particular
+instrument. we need not plan that in detail."
 
 Steps 2-4 can change order with what the player has at hand and wants to
 hear first.
@@ -383,8 +390,11 @@ contributor's takes serve twice.
   mic, interface, room), and their consent.
 - **Consent, separately for each use,** in plain words, before upload:
   - their takes used to test and train the transcription;
-  - samples cut from their takes published in the project's fonts, under
-    the fonts' licence, CC0 (below), which cannot be withdrawn once published;
+  - their whole upload, the takes and the samples cut from them, under the
+    fonts' licence, CC0 (below), which cannot be withdrawn once published
+    (the player, 2026-10-22: "i want to get CC0 permission for the entire
+    upload"); whether full takes go out with a release is decided at that
+    release;
   - whether and how they are credited (a name, a handle, or none).
   They also confirm the playing and the recording are their own, and that
   nothing comes from a sample library or a record.
@@ -462,7 +472,8 @@ contributor's takes serve twice.
 1. **The fonts' licence:** CC0, for every instrument and every contributor's
    samples (decided 2026-10-22; the player: "CC0 for everything contributed
    to the soundfonts project").
-2. **Which instruments are at hand:** which banjo, a mandolin, a fiddle?
+2. **Which instruments are at hand:** the banjo is a Silvertone with a
+   resonator (the player, 2026-10-22); a mandolin, a fiddle?
    Who would play the fiddle, if anyone here?
 3. **Strings:** restring the D-1 and the Beard before sampling, or sample
    them as they sound now?
