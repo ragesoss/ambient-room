@@ -129,7 +129,7 @@ HARMONY_NAMES = {"style": "Progression", "loop": "Loop chords", "length": "Cycle
                  "borrow": "Borrowing"}
 MELODY_NAMES = {"style": "Melody style", "phrase": "Phrase length", "variation": "Variation",
                 "range": "Melodic range", "leaps": "Leaps", "syncopation": "Syncopation", "pickups": "Pickups",
-                "pull": "The tune"}
+                "pull": "The tune", "density": "Note density"}
 
 
 def energy(s: dict) -> float:

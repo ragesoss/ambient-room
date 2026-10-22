@@ -2,7 +2,10 @@
 its pull, each one pass of the tune over the same band, to files. Nothing is played: Csound renders to files.
 
     .venv/bin/python tools/tune_breaks.py [--out DIR] [--tunes "Red Wing,Down Yonder,Big Sciota"]
-        [--pulls 1,0.75,0.25,0] [--middle 0.5] [--seeds 1,2,3] [--lufs -20]
+        [--pulls 1,0.75,0.25,0] [--middle 0.5] [--seeds 1,2,3] [--densities 1] [--locals none] [--grid]
+        [--lufs -20]
+    python3 tools/tune_breaks.py --measure 20 [--tunes ...] [--pulls 1,0.75,0.5,0.25,0]
+        [--densities 1.25,1,0.75,0.5] [--json PATH]
 
 For each tune, its mood (presets.WHOLE: its chart, the band, its tempo) with the Tune line on the voice in VOICES
 (the mood's dobro; the fiddle for Down Yonder). Cherokee Shuffle is not in the default --tunes (the review's 21 clips
@@ -12,9 +15,18 @@ of a tune (checked, note for note), so the band is rendered once and each break'
 The clip: one bar of the tune before the pass (the band, and the pickup into bar 1), the pass, and the first note of
 the next pass with two beats of the band, faded over its last second; every clip brought to the same loudness
 (`--lufs`, integrated, ffmpeg's ebur128; a gain alone). The versions: the pulls at one seed, and the middle pull at
-each seed. Written: `<tune>-<version>.flac` (48 kHz, 24-bit, stereo) and `breaks.json` (each clip's version, timing,
-loudness and gain, and how much of the tune its break keeps: `breaks.measure`) in DIR, by default the transcription
-project's review cache for `2026-10-22-tune-breaks` (outside both repos).
+each seed; with `--grid`, every pull at every one of `--densities` (the break's notes against the tune's,
+`breaks.density_of`; 1, as the pull plays it, the default) at the first seed; each at every one of `--locals`
+(`BreakParams.local`, the departure by the tune's own density bar by bar; none, off, the default). Written:
+`<tune>-<version>.flac` (48 kHz, 24-bit, stereo; a version `p075-s1`, or `p075-d050-s1` at a density, `-l200` with
+local 2) and `breaks.json` (each clip's version,
+timing, loudness and gain, and how much of the tune its break keeps: `breaks.measure`) in DIR, by default the
+transcription project's review cache for `2026-10-22-tune-breaks` (outside both repos).
+
+`--measure N` renders nothing (no Csound: Miniconda's Python will do): for each tune, pull and density, the
+conductor run over seeds 1 to N as for a clip, and the first pass's break measured (`breaks.measure`): its notes
+against the tune's, the tune's strong-beat notes it sounds there, its notes that are the tune's own, the arrivals it
+sounds; their means printed as a table, and written with `--json`.
 """
 
 from __future__ import annotations
@@ -28,6 +40,7 @@ import re
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -46,12 +59,14 @@ OUT = Path.home() / ".cache" / "challenge-reviews" / "2026-10-22-tune-breaks"
 VOICES = {"Red Wing": "Dobro", "Down Yonder": "Fiddle", "Big Sciota": "Dobro", "Cherokee Shuffle": "Dobro"}
 BAND_SEED, MELODY_SEED = 1, 100  # the band's dice, and the free line's (the melodist's), the same in every version
 TAIL_BEATS, FADE_S = 2.0, 1.0
+BASE_PARAMS = breaks.PARAMS
 
 
-def state_for(mood: str, voice: str, pull: float) -> dict:
+def state_for(mood: str, voice: str, pull: float, density: float = 1.0) -> dict:
     s = copy.deepcopy(MOODS[mood])
     s["melody"]["style"] = "Tune"
     s["melody"]["pull"] = pull
+    s["melody"]["density"] = breaks.density_setting(density)
     s["layers"]["melody"]["voice"] = voice
     s["evolve"]["rate"] = 0.0
     return s
@@ -67,10 +82,11 @@ def melody_instruments(state: dict) -> set[int]:
     return out
 
 
-def run(mood: str, voice: str, pull: float, seed: int) -> dict:
+def run(mood: str, voice: str, pull: float, seed: int, density: float = 1.0, local: float | None = None) -> dict:
     """One version: the conductor over the lead-in pass, the pass, the tail; its notes split into the band's and the
-    melody's, the clip's times, and the pass's line as the break played it."""
-    state = state_for(mood, voice, pull)
+    melody's, the clip's times, and the pass's line as the break played it. `local`: BreakParams.local for it."""
+    breaks.PARAMS = replace(BASE_PARAMS, local=local)
+    state = state_for(mood, voice, pull, density)
     clock = _Clock()
     c = Conductor(clock, random.Random(BAND_SEED), melody_rng=random.Random(MELODY_SEED))
     c.break_seed = seed
@@ -103,7 +119,8 @@ def run(mood: str, voice: str, pull: float, seed: int) -> dict:
     return {"band": band, "melody": melody, "channels": dict(clock.channels), "clip": clip, "t0": t0,
             "played": played(line, melody, t0, tune_beat, br.shift),
             "tune_beat": tune_beat, "tune": tune, "line": line, "k": k,
-            "measure": breaks.measure(line, tune), "pull": pull, "seed": seed}
+            "measure": breaks.measure(line, tune, br.chords), "pull": pull, "seed": seed, "density": density,
+            "local": breaks.PARAMS.local}
 
 
 def played(line: list, melody: list[tuple], t0: float, beat: float, shift: int) -> list[int]:
@@ -180,10 +197,63 @@ def clip_of(band: np.ndarray, melody: np.ndarray, clip: tuple[float, float]) -> 
     return x * env[:, None]
 
 
-def versions(pulls: list[float], middle: float, seeds: list[int]) -> list[tuple[str, float, int]]:
-    out = [(f"p{round(100 * p):03d}-s{seeds[0]}", p, seeds[0]) for p in pulls]
-    out += [(f"p{round(100 * middle):03d}-s{s}", middle, s) for s in seeds]
-    return sorted(set(out), key=lambda v: (-v[1], v[2]))
+def versions(pulls: list[float], middle: float, seeds: list[int], densities: list[float] | None = None,
+             grid: bool = False, locals_: list[float | None] | None = None) -> list[tuple]:
+    """(id, pull, seed, density, local) each: the pulls at the first seed and the middle at each seed, at every
+    density and local; or (`grid`) every pull at every density and local, at the first seed. A density named in the
+    id unless only 1 is asked; a local when it is on."""
+    densities = densities or [1.0]
+    locals_ = locals_ or [None]
+    named = densities != [1.0]
+
+    def vid(p, s, d, g):
+        return (f"p{round(100 * p):03d}" + (f"-d{round(100 * d):03d}" if named else "") + f"-s{s}"
+                + (f"-l{round(100 * g):03d}" if g is not None else ""))
+    out = [(vid(p, seeds[0], d, g), p, seeds[0], d, g) for p in pulls for d in densities for g in locals_]
+    if not grid:
+        out += [(vid(middle, s, d, g), middle, s, d, g) for s in seeds for d in densities for g in locals_]
+    return sorted(set(out), key=lambda v: (-v[1], -v[3], v[2], -1 if v[4] is None else v[4]))
+
+
+def measure_grid(tunes: list[str], pulls: list[float], densities: list[float], seeds: int,
+                 local: float | None = None) -> dict:
+    """The breaks measured without sound: each tune's first pass, over seeds 1 to `seeds`, at each pull and density
+    (the means of `breaks.measure`'s shares), and the tune's own notes a bar; `local` as `run` has it."""
+    out = {}
+    for mood in tunes:
+        rows = {}
+        for p in pulls:
+            for d in densities:
+                ms = [run(mood, VOICES[mood], p, s, d, local)["measure"] for s in range(1, seeds + 1)]
+                rows[f"{p:g} {d:g}"] = {"pull": p, "density_asked": d, **{
+                    k: round(sum(m[k] for m in ms) / len(ms), 4)
+                    for k in ("density", "notes_a_bar", "strong_kept", "strong_pc_kept", "tune_notes",
+                              "arrivals_kept", "onsets_kept", "changes_struck", "repeats_alike")}}
+        tune = load_for(mood)
+        out[mood] = {"tune_notes_a_bar": round(len(tune.melody()) / tune.bars, 3), "rows": rows}
+    return out
+
+
+def load_for(mood: str):
+    src = TUNE_MELODIES[mood]
+    return breaks.load_tune(src["folder"], src["key"], src["bars"], parts=tuple(src.get("parts", ())))
+
+
+def print_grid(g: dict, seeds: int) -> None:
+    for mood, t in g.items():
+        print(f"{mood} (the tune {t['tune_notes_a_bar']:.2f} notes a bar; {seeds} seeds, the first pass): its notes "
+              f"against the tune's / strong-beat notes kept / the tune's own notes / arrivals")
+        pulls = sorted({r["pull"] for r in t["rows"].values()}, reverse=True)
+        dens = sorted({r["density_asked"] for r in t["rows"].values()}, reverse=True)
+        print("| pull | " + " | ".join(f"density {d:g}" for d in dens) + " |")
+        for p in pulls:
+            cells = []
+            for d in dens:
+                r = t["rows"][f"{p:g} {d:g}"]
+                cells.append(f"{r['density']:.2f} / {100 * r['strong_kept']:.0f}% / {100 * r['tune_notes']:.0f}% / "
+                             f"{100 * r['arrivals_kept']:.0f}%")
+            print(f"| {p:g} | " + " | ".join(cells) + " |")
+        print()
 
 
 def main(argv=None) -> None:
@@ -193,9 +263,28 @@ def main(argv=None) -> None:
     ap.add_argument("--pulls", default="1,0.75,0.25,0")
     ap.add_argument("--middle", type=float, default=0.5)
     ap.add_argument("--seeds", default="1,2,3")
+    ap.add_argument("--densities", default="1", help="the break's notes against the tune's (1: as the pull plays it)")
+    ap.add_argument("--locals", default="none", help="BreakParams.local: none (off), or a number")
+    ap.add_argument("--grid", action="store_true", help="every pull at every density, at the first seed")
+    ap.add_argument("--measure", type=int, default=0, help="no sound: measure over seeds 1 to N")
+    ap.add_argument("--json", type=Path, help="with --measure: write the grid here")
     ap.add_argument("--lufs", type=float, default=-20.0)
     ap.add_argument("--keep", action="store_true", help="keep the stems (tmp/: the band, each melody) to check")
     a = ap.parse_args(argv)
+    densities = [float(x) for x in a.densities.split(",")]
+    locals_ = [None if x.strip() == "none" else float(x) for x in a.locals.split(",")]
+    if a.measure:
+        tunes = [x.strip() for x in a.tunes.split(",")]
+        grids = {}
+        for g in locals_:
+            print(f"local: {'none (off)' if g is None else g}\n")
+            grids[str(g)] = measure_grid(tunes, [float(x) for x in a.pulls.split(",")], densities, a.measure, g)
+            print_grid(grids[str(g)], a.measure)
+        if a.json:
+            a.json.write_text(json.dumps({"made": time.strftime("%Y-%m-%d %H:%M"), "seeds": a.measure,
+                                          "band_seed": BAND_SEED, "melody_seed": MELODY_SEED,
+                                          "params": BASE_PARAMS.__dict__, "locals": grids}, indent=1))
+        return
     a.out.mkdir(parents=True, exist_ok=True)
     samples.orchestra(REPO / "sounds")  # first: which voices are sampled (their instrument numbers)
     pulls = [float(x) for x in a.pulls.split(",")]
@@ -204,7 +293,8 @@ def main(argv=None) -> None:
                 "melody_seed": MELODY_SEED, "params": breaks.PARAMS.__dict__, "tunes": []}
     for mood in [x.strip() for x in a.tunes.split(",")]:
         voice = VOICES[mood]
-        runs = {vid: run(mood, voice, pull, seed) for vid, pull, seed in versions(pulls, a.middle, seeds)}
+        runs = {vid: run(mood, voice, pull, seed, dens, g)
+                for vid, pull, seed, dens, g in versions(pulls, a.middle, seeds, densities, a.grid, locals_)}
         bands = {vid: digest(r["band"]) for vid, r in runs.items()}
         if len(set(bands.values())) != 1:
             raise SystemExit(f"{mood}: the band differs between versions: {bands}")
@@ -238,14 +328,17 @@ def main(argv=None) -> None:
             after = lufs(out)
             m = r["measure"]
             tune_rec["versions"].append({
-                "id": vid, "pull": r["pull"], "seed": r["seed"], "file": str(out), "seconds": round(len(x) / RATE, 3),
+                "id": vid, "pull": r["pull"], "seed": r["seed"], "density": r["density"], "local": r["local"],
+                "file": str(out),
+                "seconds": round(len(x) / RATE, 3),
                 "lufs_before": round(before, 2), "gain_db": round(gain, 2), "lufs": round(after, 2),
                 "peak_dbfs": round(float(top + gain), 2), "engine_notes": r["played"],
                 "measure": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()},
                 "line": [[round(n.t, 4), round(n.dur, 4), n.midi, n.how, n.by] for n in r["line"]]})
             print(f"{mood} {vid}: {len(x) / RATE:.1f} s, {before:.1f} -> {after:.1f} LUFS, the engine's notes "
                   f"{r['played'][0]}/{r['played'][1]}, strong kept "
-                  f"{m['strong_kept']:.2f}, arrivals {m['arrivals_kept']:.2f}, the tune's notes {m['tune_notes']:.2f}")
+                  f"{m['strong_kept']:.2f}, arrivals {m['arrivals_kept']:.2f}, the tune's notes {m['tune_notes']:.2f}, "
+                  f"its notes against the tune's {m['density']:.2f}")
         manifest["tunes"].append(tune_rec)
     (a.out / "breaks.json").write_text(json.dumps(manifest, indent=1))
     if not a.keep:

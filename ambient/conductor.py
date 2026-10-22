@@ -277,8 +277,8 @@ class Conductor:
 
     def sync_break(self) -> None:
         """The Tune line's break, over a chart whose tune has a melody (presets.TUNE_MELODIES): made again when the
-        tune, the key, the chords or the voice change; a new pull taken up from its next phrase. Over any other
-        harmony, or with the tune's key not to hand, the Tune line is the free line (Phrases)."""
+        tune, the key, the chords or the voice change; a new pull or note density taken up from its next phrase. Over
+        any other harmony, or with the tune's key not to hand, the Tune line is the free line (Phrases)."""
         s = self.state
         found = breaks.tune_for(s) if s["melody"]["style"] == "Tune" else None
         if found is None:
@@ -287,8 +287,10 @@ class Conductor:
         name, src = found
         h, voice = s["harmony"], s["layers"]["melody"]["voice"]
         made_for = (name, s["key"], tuple(music.slots_of(s["tones"])), h["size"], h["plain"], voice, self.break_seed)
+        density = breaks.density_of(s["melody"]["density"])
         if made_for == self.break_for and self.breaker is not None:
             self.breaker.pull = s["melody"]["pull"]
+            self.breaker.density = density
             return
         try:
             tune = breaks.load_tune(src["folder"], src["key"], src["bars"], parts=tuple(src.get("parts", ())))
@@ -300,7 +302,7 @@ class Conductor:
         shift -= 12 if shift > 6 else 0
         chords = breaks.chart_beats(s, src["k"], int(tune.beats), shift)
         self.breaker = breaks.Break(tune, chords, s["melody"]["pull"], self.break_seed, src["k"], shift,
-                                    breaks.IDIOMS.get(voice, breaks.IDIOMS["any"]))
+                                    breaks.IDIOMS.get(voice, breaks.IDIOMS["any"]), breaks.PARAMS, density)
         pos = self.chart_bar()
         self.breaker.first_pass = max(0, self.bar) // pos[1] if pos else 0
         self.break_for = made_for

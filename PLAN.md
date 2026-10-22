@@ -932,6 +932,67 @@ Now a pick stops the string's note whenever it may still sound, up to 4.5 s afte
 - `tests/test_breaks.py` (18): a pick 2, 3.9 and 4.2 s after the last on its string stops it, 5 s after does not, in
   both lines. The suite 119 passed, 1 skipped; under the venv 80 passed. Not deployed.
 
+### A break's note density (2026-10-22)
+
+The player, after the Tune line on Cherokee Shuffle at pulls 1 and 0.5: "For the ones closer to 0, I think it'll be
+important to reduce note density... a player would play different notes and rhythms from the standard melody, but not
+necessarily play something far busier ... with low note density, i'd want to hear it actually simplify the melody in
+some cases rather than ornament it". The transcription project's card `ambient-break-density` (#232).
+
+- **The control**: Note density, on the Melody tab beside The tune (`melody.density`, 0 to 1; 0.5, the default, is
+  the tune's own; `breaks.density_of`: a quarter of the tune's notes at 0, twice them at 1, linear on each side).
+  It is lockable and in a preset's Melody part, like The tune; evolution never moves it. Its words: "the tune's own
+  notes, and what the pull adds", "50% of the tune's notes: simpler", "up to 150% of the tune's notes: filled".
+  A new density is taken up from the break's next phrase, as a new pull is.
+- **At the default the synth is as before**: the density's rules are not asked (a test stops them), and every note
+  the conductor sends is the same as on main (3db72aa) over the four tunes, pulls 1, 0.75, 0.5, 0.25 and 0, and 20
+  seeds each: 400 runs, 455,441 notes (the band's and the line's) and 109,212 notes of the break as heard, also with
+  the density set to 0.5 by hand.
+- **Below the tune's own** a phrase is held to that share of the tune's notes in it (from 0.75 down; between 0.75 and
+  1 the notes it plays over the tune's own give way in proportion, so the control has no step at 1): the skeleton
+  kept (its first note and its landing always; the notes on beats 1 and 3, the landing's approach, a note where the
+  chord changes, one where the tune strikes a note), and first dropped a fill's or a run's notes, a grace note, a
+  repeated note (held instead), a passing or neighbour note; of the rest the tune's own where the pull is high, the
+  chord's tones where it is low. Each note left is held to the next, never into a bar the free line takes; where one
+  would be held past its own length over a chord it is not in, a note dropped there is struck again; one held longer
+  over other notes, out of its chord, moves to the chord's nearest. The free line's bars are held the same way to
+  the share of the tune's notes in each bar (one note at least). It has dice of its own, so a break at a density is
+  its seed's break at 1, simplified. Cherokee, pull 0.75, bars 1-4 (seed 1): as written A3 2 | A3 1.5 B3 .5 | C#4 1
+  B3 1 A3 2 | A3 1.5 A3 .5 C#4 1 E4 1 | F#4 3 G#4 1 (12 notes); at the tune's own density 29 notes (eighth fills, a
+  roll over the F#4); at 0.75, A3 2 | A3 2 | C#4 1 B3 1 A3 2 | A3 2 C#4 1 E4 1 | F#4 4 (9); at 0.5, A3 2 | A3 2 |
+  C#4 2 A3 4 | C#4 2 | F#4 4 (6).
+- **Above the tune's own** a phrase's held notes are filled as the pull fills them, in a random order (its landing
+  last; not a double stop's), until it has that share of the tune's notes; a break already busier is left as it is
+  (Cherokee at 0.75 plays 1.64 times its notes at 1, 1.66 at 1.25). The free line is not filled. The tune as written
+  is the same at every density.
+- **The departure by the tune's own density** (`BreakParams.local`, None: off). From the player's answer on Down
+  Yonder at 0.25 (review `2026-10-22-tune-breaks`): "a fiddle player would usually hit most of the standard notes in
+  the low density portions ... and then innovate on the density parts more freely". Set, each note's moves and each
+  bar's chance of the free line go at d ** (1 / r ** g), r the tune's notes in that bar against its mean. With g 2,
+  over 20 seeds at pull 0.25, Down Yonder's sparse bars (0.8 of the mean or fewer) keep their beat 1 and 3 notes 58%
+  -> 74%, its busy bars (1.3 or more) 45% -> 33%; at 0.5, 82% -> 89% and 88% -> 60%. Off until the player hears it.
+- **Measured** (`tools/tune_breaks.py --measure 20`, no sound; the first pass; the four tunes are development and
+  validation in the transcription project's split, nothing tuned on a held-out tune): see that project's findings,
+  "A break's note density". From pull 0.25 to 0.75 the break's notes against the tune's come to 0.75-0.82 at
+  density 0.75 and 0.50-0.59 at 0.5 (the strikes where the chord changes add a few, most on Cherokee); free, 0.66-0.86
+  and 0.49-0.62 (a bar where the free line plays fewer than the share keeps them). Every landing sounded at every
+  density from pull 0.25 up; the chord changes struck 93-100% at every density from 0.25 up. New in `breaks.measure`: the tune's
+  onsets the line strikes too, the chord changes it strikes, and how alike a repeated phrase is to the phrase it
+  repeats. `tools/tune_breaks.py`: `--densities`, `--grid`, `--locals`, `--measure N`, `--json`.
+- **Rendered** for the ear (`tools/tune_breaks.py`, Csound offline, nothing heard): Cherokee and Red Wing at pulls
+  0.75 and 0.25, each at densities 1, 0.75 and 0.5 (seed 1); Down Yonder at 0.25 with `local` off and 2 (seed 14);
+  Big Sciota at 0.5 at 1 and 0.75 (seed 3, the break the player said should keep "the simplified core of the
+  repeated phrases"). 16 clips, 12.3 minutes, each -20 LUFS (gains +9.1 to +12.3 dB, peaks -4.2 to -7.0 dBFS), the
+  band the same in every clip of a tune; the engine given every note of every break but one (Cherokee at 0.75 and
+  the tune's own density, the tune's own slide from a slid note in bar 19, as today).
+- `tests/test_breaks.py` 18 -> 26: the setting and its words; at 1 the density's rules never run; below 1 the same
+  break simplified (every note one it played, held, or moved to its chord; no note struck again within two beats;
+  none held over a chord it is not in while another note was there to strike); the tune's own kept where the pull is
+  high, the chord's where low; above 1 filled, as written unchanged; the free line held; a repeat more like the
+  phrase it repeats, nothing held into the free line; `local` off unless set, and what it does. The suite 119 -> 127
+  passed, 1 skipped; under the venv the engine's, conductor's, server's and breaks' tests 69 -> 77. Not deployed: a
+  sound change at any density but the default, for the player's ear first (review `2026-10-22-break-density`).
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.

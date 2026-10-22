@@ -1,6 +1,7 @@
 """The Tune line (ambient/breaks.py): a break on a tune's melody, from as written to the free line."""
 
 import copy
+import math
 import random
 import re
 from dataclasses import replace
@@ -206,8 +207,11 @@ def test_the_free_end_is_todays_line(red_wing_tune):
 def test_the_band_is_the_same_under_every_line(red_wing_tune):
     mel = _melody_instr(_red_wing_state("Tune"))
     bands = []
-    for pull, seed in ((1.0, 1), (0.5, 1), (0.5, 2), (0.0, 1)):
-        _, notes = _play(_red_wing_state("Tune", pull), 11, seed)
+    for pull, seed, density in ((1.0, 1, 0.5), (0.5, 1, 0.5), (0.5, 2, 0.5), (0.0, 1, 0.5), (0.5, 1, 0.2),
+                                (0.25, 2, 0.8), (0.0, 1, 0.1)):
+        s = _red_wing_state("Tune", pull)
+        s["melody"]["density"] = density
+        _, notes = _play(s, 11, seed)
         bands.append([n for n in notes if int(abs(n[1])) not in mel])
         assert any(int(abs(n[1])) in mel for n in notes)
     assert all(b == bands[0] for b in bands[1:])
@@ -223,6 +227,187 @@ def test_pull_is_a_setting():
     s = merge(DEFAULT, {"melody": {"pull": 0.3, "style": "Tune"}})
     assert s["melody"]["pull"] == 0.3 and s["melody"]["style"] == "Tune"
     assert DEFAULT["melody"]["style"] == "Scattered"  # chosen, not imposed
+
+
+# ---- the density: a break's notes against the tune's (the transcription project's card ambient-break-density) ----
+
+def test_density_is_a_setting_beside_the_pull():
+    from ambient import explain
+    assert DEFAULT["melody"]["density"] == 0.5 and breaks.density_of(0.5) == 1.0  # the default: as before
+    assert breaks.density_of(0) == 0.25 and breaks.density_of(1) == 2.0
+    for r in (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0):
+        assert breaks.density_of(breaks.density_setting(r)) == pytest.approx(r)
+    assert merge(DEFAULT, {"melody": {"density": 0.2}})["melody"]["density"] == 0.2
+    ids = [q["id"] for q in explain.options()["melody"]["params"]]
+    assert ids[ids.index("pull") + 1] == "density"
+    assert explain._melody(DEFAULT)["density"].startswith("the tune's own")
+    assert explain._melody(merge(DEFAULT, {"melody": {"density": 1 / 6}}))["density"].startswith("50%")
+
+
+def test_at_density_one_its_rules_never_run(red_wing_tune, monkeypatch):
+    """At 1, the default, a break is as its pull makes it: the density's rules are not asked, so its dice and its
+    notes are as before (checked against the code before them, every note the conductor sent over the four tunes,
+    five pulls and 20 seeds: the transcription project's findings)."""
+    def ran(*a, **k):
+        raise AssertionError("the density's rules ran at 1")
+    for name in ("_dense", "_thin_free", "_simplify", "_fill_to"):
+        monkeypatch.setattr(Break, name, ran)
+    for pull in (0.75, 0.5, 0.25, 0.1, 0.0):
+        c, notes = _play(_red_wing_state("Tune", pull), 11, 3)
+        assert c.breaker.density == 1.0 and notes
+
+
+def _repeats(notes: list[Note]) -> int:
+    mel = [n for n in notes if n.how != "double"]
+    return sum(a.midi == b.midi and b.t - a.t < 2 - 1e-6 for a, b in zip(mel, mel[1:]))
+
+
+def test_below_one_a_break_simplifies_its_own_notes():
+    """The break at a density under 1 is its seed's break at 1 with notes left out and held: each phrase's first note
+    and its arrival kept, its notes that share of the tune's (and a note struck where the chord changes under one
+    held); every note one the break at 1 played (its time and pitch), or a grace note's main note back on its time,
+    or a note held longer moved to its chord; no note struck again within two beats of itself (held instead); none
+    held past its own length over a chord it is not in while another note was there to strike."""
+    tune = synthetic()
+    for pull in (0.75, 0.5):
+        for seed in range(20):
+            full = [n for n in line(Break(tune, chords(), pull, seed=seed, k=2), 0) if n.how != "double"]
+            was = {(round(n.t, 4), n.midi): n.dur for n in full}
+            shares = []
+            for dens in (0.75, 0.5):
+                br = Break(tune, chords(), pull, seed=seed, k=2, density=dens)
+                notes = line(br, 0)
+                m = measure(notes, tune)
+                assert m["arrivals_kept"] == 1.0 and m["density"] <= dens + 0.15
+                shares.append(m["density"])
+                mel = [n for n in notes if n.how != "double"]
+                for n in mel:
+                    assert ((round(n.t, 4), n.midi) in was or (round(n.t + 0.25, 4), n.midi) in was
+                            or n.by == "held"), (pull, seed, dens, n)
+                assert _repeats(notes) == 0
+                kept = {(round(n.t, 4), n.midi) for n in mel}
+                for n, after in zip(mel, mel[1:]):
+                    own_end = n.t + was.get((round(n.t, 4), n.midi), n.dur)
+                    for b in range(math.ceil(own_end - 1e-6), math.ceil(min(n.end, after.t) - 1e-6)):
+                        if n.midi % 12 not in br.chord_at(b):
+                            assert not [x for x in full if n.t < x.t < after.t and x.midi != n.midi
+                                        and (round(x.t, 4), x.midi) not in kept], (pull, seed, dens, n, b)
+                for j, (b0, b1) in enumerate(tune.phrases()):
+                    plan = br.phrase(0, j)
+                    spans = [x for x in plan if isinstance(x, breaks.FreeSpan)]
+                    own = [n for n in tune.melody() if b0 * BAR <= n.t < b1 * BAR
+                           and not any(s.t0 <= n.t < s.t1 for s in spans)]
+                    mine = [x for x in plan if isinstance(x, Note) and x.how != "double"]
+                    assert len(mine) <= max(2, math.ceil(dens * len(own))) + 3  # and a few struck under chords
+                    varied = [x for x in br.varied(0, j) if isinstance(x, Note)]
+                    if varied and abs(varied[0].t - b0 * BAR) < 1e-6:
+                        assert mine[0].t == varied[0].t  # the phrase's first note
+            assert shares[0] > shares[1]
+
+
+def test_simplifying_keeps_the_tunes_notes_where_the_pull_is_high_and_the_chords_where_it_is_low():
+    tune = synthetic()
+
+    def shares(pull):
+        own, chord = [], []
+        for seed in range(30):
+            br = Break(tune, chords(), pull, seed=seed, k=2, density=0.5)
+            notes = [n for n in line(br, 0) if n.how != "double"]
+            own.append(measure(notes, tune)["tune_notes"])
+            chord.append(sum(n.midi % 12 in br.chord_at(n.t) for n in notes) / len(notes))
+        return sum(own) / len(own), sum(chord) / len(chord)
+
+    high, low = shares(0.75), shares(0.25)
+    assert high[0] > 0.8 and high[0] > low[0] + 0.15  # the tune's own
+    assert low[1] > 0.9  # the chord's
+
+
+def test_above_one_a_break_fills_and_the_tune_as_written_stays():
+    tune = synthetic()
+    shares = []
+    for seed in range(20):
+        at1 = line(Break(tune, chords(), 0.75, seed=seed, k=2), 0)
+        more = line(Break(tune, chords(), 0.75, seed=seed, k=2, density=1.5), 0)
+        assert len(more) >= len(at1)
+        shares.append(measure(more, tune)["density"])
+        for dens in (0.5, 1.5):
+            assert line(Break(tune, chords(), 1.0, seed=seed, k=2, density=dens), 0) == tune.notes
+    assert sum(shares) / len(shares) > 1.4
+
+
+def test_the_free_line_is_held_to_the_density(red_wing_tune):
+    """Near the free end a break plays other notes and rhythms, not more of them: at pull 0 the free line's notes
+    left out and held, to the share of the tune's notes in each bar (one at least, and one where the chord changes
+    under a note held); a note held over others moved to its chord's nearest."""
+    tune = synthetic()
+    s = _red_wing_state("Tune", 0.0)
+    c1, _ = _play(s, 11, 3, seconds=40)
+    s["melody"]["density"] = breaks.density_setting(0.5)
+    c2, _ = _play(s, 11, 3, seconds=40)
+    at1 = {round(n.t, 4): n for p, n in c1.breaker.heard if p == 0}
+    half = [n for p, n in c2.breaker.heard if p == 0]
+    assert len(half) < 0.6 * len(at1) and len(half) <= 0.65 * len(tune.melody())
+    for n in half:
+        was = at1[round(n.t, 4)]
+        assert n.midi == was.midi or (n.midi % 12 in c2.breaker.chord_at(n.t) and n.dur > was.dur)
+
+
+def test_a_simplified_repeat_keeps_the_core_of_the_phrase_it_repeats_and_holds_nothing_into_the_free_line():
+    """The player (2026-10-22, Big Sciota at 0.5): "the simplified core of the repeated phrases ... would be kept,
+    and elaborated on, rather than replaced". Simplified, a repeat's notes are more the earlier phrase's own (at the
+    same place and pitch class) than at 1, the skeleton being the same; and no note is held into a bar the free line
+    takes."""
+    tune = synthetic()
+    alike = {1.0: [], 0.5: []}
+    for seed in range(20):
+        for dens in alike:
+            br = Break(tune, chords(), 0.4, seed=seed, k=2, density=dens)
+            notes = line(br, 0)
+            alike[dens].append(measure(notes, tune)["repeats_alike"])
+            for j in range(len(tune.phrases())):
+                plan = br.phrase(0, j)
+                walls = [x.t0 for x in plan if isinstance(x, breaks.FreeSpan)]
+                for n in plan:
+                    if isinstance(n, Note):
+                        assert not any(n.t < w < n.end - 1e-6 for w in walls), (seed, dens, n)
+    assert sum(alike[0.5]) > sum(alike[1.0])
+
+
+def _sparse_and_busy() -> Tune:
+    """A tune in G whose bars are by turns two half notes and eight eighths."""
+    notes, scale = [], [55, 57, 59, 60, 62, 64, 66, 67]
+    for bar in range(16):
+        t = bar * BAR
+        if bar % 2 == 0:
+            notes += [Note(t, 2.0, 55 if bar % 4 == 0 else 59), Note(t + 2, 2.0, 62)]
+        else:
+            notes += [Note(t + 0.5 * i, 0.5, scale[(i + bar) % 8]) for i in range(8)]
+    return Tune("sparse-busy", 7, 16, notes)
+
+
+def test_the_departure_by_the_tunes_own_density_off_unless_set():
+    """The player (2026-10-22, Down Yonder at 0.25): "a fiddle player would usually hit most of the standard notes in
+    the low density portions ... and then innovate on the density parts more freely". With `local`, the strong-beat
+    notes of the tune's sparse bars are kept more and its busy bars' less; off (None, the default) as before; as
+    written the same either way."""
+    tune = _sparse_and_busy()
+    on = replace(breaks.PARAMS, local=2.0)
+    assert breaks.PARAMS.local is None
+
+    def kept(params, sparse):
+        same = total = 0
+        for seed in range(30):
+            notes = line(Break(tune, chords(), 0.4, seed=seed, k=2, params=params), 0)
+            for n in tune.melody():
+                if breaks.strong(n.t) and (int(n.t // BAR) % 2 == 0) == sparse:
+                    x = breaks.sounding(notes, n.t)
+                    same += x is not None and x.midi == n.midi
+                    total += 1
+        return same / total
+
+    assert kept(on, True) > kept(breaks.PARAMS, True) + 0.05
+    assert kept(on, False) < kept(breaks.PARAMS, False) - 0.05
+    assert line(Break(tune, chords(), 1.0, seed=1, k=2, params=on), 0) == tune.notes
 
 
 @pytest.mark.skipif(breaks.project_root() is None, reason="needs the transcription project's tunes")
