@@ -384,7 +384,7 @@ contributor's takes serve twice.
 - **Consent, separately for each use,** in plain words, before upload:
   - their takes used to test and train the transcription;
   - samples cut from their takes published in the project's fonts, under
-    the fonts' licence (below), which cannot be withdrawn once published;
+    the fonts' licence, CC0 (below), which cannot be withdrawn once published;
   - whether and how they are credited (a name, a handle, or none).
   They also confirm the playing and the recording are their own, and that
   nothing comes from a sample library or a record.
@@ -410,8 +410,9 @@ contributor's takes serve twice.
 
 - **The project's own fonts** (from the player's and contributors'
   recordings): CC0 (question 1, decided 2026-10-22; the player: "let's go
-  with CC0"; dobro-transcription's card `fonts-release-decisions`), stated
-  before the first contributor uploads. The build scripts keep the code's own
+  with CC0"; dobro-transcription's card `fonts-release-decisions`), the same
+  for every instrument and every contributor's samples, stated before the
+  first contributor uploads. The build scripts keep the code's own
   licence.
 - **Fonts built from others keep their terms,** and stay in files of their
   own, not merged into ours:
@@ -450,8 +451,9 @@ contributor's takes serve twice.
 
 ## Open questions for the player
 
-1. **The fonts' licence:** CC0 (decided 2026-10-22). Still open: the same for
-   every instrument and for contributors' samples?
+1. **The fonts' licence:** CC0, for every instrument and every contributor's
+   samples (decided 2026-10-22; the player: "CC0 for everything contributed
+   to the soundfonts project").
 2. **Which instruments are at hand:** which banjo, a mandolin, a fiddle?
    Who would play the fiddle, if anyone here?
 3. **Strings:** restring the D-1 and the Beard before sampling, or sample
