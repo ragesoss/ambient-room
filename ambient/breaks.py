@@ -14,7 +14,8 @@ read by that project's score reader with its repeats played out): one pass of th
 into bar 1 (Down Yonder's three notes, Big Sciota's D) is played at the end of the pass, into the next. The chords
 are the ones the band plays (the loop's, a beat at a time), so a chord tone is what sounds under the note.
 
-**The phrase.** Four of the tune's bars (a part's remainder joined to its last phrase). Its **arrival** is the
+**The phrase.** Four of the tune's bars, within a part (a part's remainder joined to its last phrase: Cherokee
+Shuffle's B, 10 bars, is phrases of 4 and 6; a tune whose parts are not given is one part). Its **arrival** is the
 longest note in its last bar (the later of two as long): the cadence, where the phrase lands (Red Wing's A over D,
 then G); the notes up to two beats before it are its **approach**, those after it lead into the next phrase.
 A phrase that plays an earlier one again (three quarters of its notes the same) is a **repeat**.
@@ -102,13 +103,14 @@ class FreeSpan:
 @dataclass
 class Tune:
     """One pass of a tune's melody: its notes from bar 1 (the pickup into the next pass in its last bar), its key,
-    its bars, and the pickup into bar 1 (`lead_in`, before it)."""
+    its bars, the pickup into bar 1 (`lead_in`, before it), and the bars of each part (`parts`; none: one part)."""
     name: str
     key: int  # the home note's pitch class
     bars: int
     notes: list[Note]
     lead_in: list[Note] = field(default_factory=list)
     phrase_bars: int = 4
+    parts: tuple[int, ...] = ()
 
     @property
     def beats(self) -> float:
@@ -118,10 +120,14 @@ class Tune:
         return [n for n in self.notes if n.how != "double"]
 
     def phrases(self) -> list[tuple[int, int]]:
-        """Bars [start, end) of each phrase: phrase_bars each, a remainder joined to the last."""
-        n = max(1, self.bars // self.phrase_bars)
-        out = [(i * self.phrase_bars, (i + 1) * self.phrase_bars) for i in range(n)]
-        out[-1] = (out[-1][0], self.bars)
+        """Bars [start, end) of each phrase: phrase_bars each within a part, a part's remainder joined to its last."""
+        out, b0 = [], 0
+        for size in self.parts or (self.bars,):
+            n = max(1, size // self.phrase_bars)
+            ph = [(b0 + i * self.phrase_bars, b0 + (i + 1) * self.phrase_bars) for i in range(n)]
+            ph[-1] = (ph[-1][0], b0 + size)
+            out += ph
+            b0 += size
         return out
 
     def phrase_of(self, t: float) -> int:
@@ -197,10 +203,13 @@ def project_root() -> Path | None:
 
 
 @lru_cache(maxsize=16)
-def load_tune(folder: str, key: str, bars: int, project: str | None = None) -> Tune:
+def load_tune(folder: str, key: str, bars: int, project: str | None = None, parts: tuple[int, ...] = ()) -> Tune:
     """One pass of a tune's key (`tunes/dobro/<folder>/<folder>.musicxml`): its first `bars` bars from bar 1, and
-    the pickup before bar 1, which is played into the next pass (its last bar's notes from there on cut)."""
+    the pickup before bar 1, which is played into the next pass (its last bar's notes from there on cut). `parts`:
+    the bars of each part in the pass, adding up to `bars` (none: the pass is one part)."""
     from .music import KEYS
+    if parts and sum(parts) != bars:
+        raise ValueError(f"{folder}: its parts {parts} are not its {bars} bars")
     root = Path(project).expanduser() if project else project_root()
     if root is None:
         raise FileNotFoundError("the transcription project's tunes are not here")
@@ -237,7 +246,7 @@ def load_tune(folder: str, key: str, bars: int, project: str | None = None) -> T
         start = end + lead_in[0].t
         notes = [replace(n, dur=min(n.dur, start - n.t)) for n in notes if n.t < start - EPS]
         notes += [replace(n, t=n.t + end) for n in lead_in]
-    return Tune(folder, KEYS.index(key), bars, notes, lead_in)
+    return Tune(folder, KEYS.index(key), bars, notes, lead_in, parts=tuple(parts))
 
 
 # ---- the instrument's idiom ----

@@ -864,6 +864,58 @@ project's card `ambient-tune-melody`; its findings, "Breaks on a tune's melody",
   and under the venv the engine's, the conductor's, the server's and the breaks' tests 76 passed. The UD self-check
   failed now and then while another agent's jobs loaded the desktop, on main as here (an underrun). Not deployed.
 
+### Cherokee Shuffle's chart (2026-10-22)
+
+The synth had no Cherokee Shuffle: its "Fiddle tune chart" is the player's own tune (in C), not Cherokee's. The
+transcription project's card `ambient-cherokee-chart` (#213); the player (2026-10-22): "do both quick wins, and deploy
+them".
+
+- **The chart** (`presets.CHEROKEE_SHUFFLE`; the harmony and the mood "Cherokee Shuffle"): the player's Strum Machine
+  chart in the tune's folder there (`tunes/dobro/cherokee-shuffle/chords.txt`, 2026-10-16), in A, laid in two as Red
+  Wing (two of its bars to a bar). A, 8 bars: A, A, A, F♯m, D, A, E, A. B, 10 bars: D, A, D, A, D, A, A, F♯m, D and E
+  half a bar each, A. AABB as played, both endings A: 36 of its bars, 18 here. A chord that goes on over a bar line is
+  carried with "/", so the loop is 31 chords (a loop holds 32).
+- **The mood**: the chart in A at 170 (the take's tempo; 85 here, tempo 0.35), the "Fiddle tune in two" line on the
+  dobro, "Bluegrass in two", the Country band. The Tune line is chosen on the Melody tab, as for the other three.
+- **The melody** (`presets.TUNE_MELODIES`): the tune's answer key there (`cherokee-shuffle.musicxml`, as the player
+  corrected it on 2026-10-16), one pass of 36 bars: 110 notes and 6 double stops' added notes, from A3 on bar 1 to the
+  E3 back to the top. `tools/deploy` already copies every dobro tune's key to the unit.
+- **Phrases within a part**: an entry may give the bars of each part of the pass (`parts`; Cherokee's 8, 8, 10, 10). A
+  phrase is four bars within its part, a part's remainder joined to its last phrase, as `breaks.py`'s docstring
+  said; before, the pass was one part, and B's phrases ran over its end. Now B is phrases of 4 and 6 bars: it lands on
+  its A3 at its end (a home cadence, where the run may go) and the second B answers the first. A tune given no parts
+  is one part, as before: Red Wing's, Down Yonder's and Big Sciota's measures are the same as before this change, to
+  the digit (20 seeds, three passes, five pulls each).
+- **Measured** as the others (20 seeds, the first pass; the tune's notes on beats 1 and 3 that the break sounds
+  there / the break's notes that are the tune's own). Cherokee Shuffle is development in the transcription
+  project's split; nothing was set from it.
+
+  | The tune | Cherokee Shuffle (dobro) | its B as four-bar phrases over the bar line |
+  |---|---|---|
+  | 1, as written | 100% / 100% | 100% / 100% |
+  | 0.75 | 96% / 53% | 97% / 57% |
+  | 0.5 | 77% / 38% | 82% / 42% |
+  | 0.25 | 45% / 24% | 52% / 26% |
+  | 0, free | 6% / 2% | 6% / 2% |
+
+  Every arrival sounded at 0.25 to 1; free, 61% by chance. Notes a bar: the tune 3.1 (mostly quarters and halves);
+  5.0 at 0.75, 5.4 at 0.5 (the fills), 5.5 free. At 0.5 the passes keep 77%, 65%, 51% of the strong-beat notes. The
+  tune keeps less of itself than the others at the same pull (Red Wing 84% / 57% at 0.5): its notes are long, so
+  more of them are filled, and the second A and B answer the first.
+- **Rendered** (`tools/tune_breaks.py --tunes "Cherokee Shuffle"`; Csound offline, nothing heard): one pass, 52.9 s
+  with the bar before and the tail, -20 LUFS. As written (gain +10.6 dB, peak -6.8 dBFS, the engine given all 116
+  notes) and at 0.5, seed 1 (+9.1 dB, -6.6 dBFS, 216 notes; 83% of the strong-beat notes, every arrival).
+- **Found in the renders**: a pick on a dobro string 3.8 to 4.0 s after that string's last pick is lost. The
+  conductor counts the string's note as over (`samples.RING_S - 0.2`) and sends no stop, but Csound's note still
+  sounds until 4.0 s, so the new pick is tied into it (no attack, the old sample retuned) and stopped with it a
+  moment later. As written, 4 of Cherokee's 101 picks on a string (bar 6's C♯4, beat 2, among them); over the
+  review's seven clips a tune, Red Wing 7, Big Sciota 8, Cherokee 10. In the Phrases line too (`play_strung`). Not
+  changed here: a sound change, for the player's ear first (branch `strung-pick-window`).
+- `tests/test_breaks.py` (17): parts split phrases; the chart beat by beat; with the transcription project here, the
+  chart against `chords.txt`, the key read as one pass (its arrivals and repeats), and the Tune line playing it as
+  written over the mood. The suite 118 passed, 1 skipped (no ctcsound under Miniconda; FluidSynth loadable); under the
+  venv the engine's, the conductor's, the server's and the breaks' tests 79 passed. Not deployed.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.

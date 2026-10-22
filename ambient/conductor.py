@@ -285,7 +285,7 @@ class Conductor:
             self.breaker.pull = s["melody"]["pull"]
             return
         try:
-            tune = breaks.load_tune(src["folder"], src["key"], src["bars"])
+            tune = breaks.load_tune(src["folder"], src["key"], src["bars"], parts=tuple(src.get("parts", ())))
         except Exception as e:  # noqa: BLE001 (no tunes here: the free line plays)
             self.error = f"the tune's melody: {type(e).__name__}: {e}"
             self.breaker, self.break_for = None, None
