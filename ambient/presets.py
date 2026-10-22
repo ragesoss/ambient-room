@@ -23,7 +23,7 @@ PARTS = {
     "harmony": ("Harmony", ["tones", "harmony.style", "harmony.loop", "harmony.length", "harmony.resolve",
                             "harmony.rhythm", "harmony.size", "harmony.plain", "harmony.borrow"]),
     "melody": ("Melody", ["melody.style", "melody.phrase", "melody.variation", "melody.range", "melody.leaps",
-                          "melody.syncopation", "melody.pickups", "shape.notes", "shape.height"]),
+                          "melody.syncopation", "melody.pickups", "melody.pull", "shape.notes", "shape.height"]),
     "beat": ("Beat", ["shape.tempo", "shape.swing", "shape.pump", "beat.drums", "beat.bass", "beat.chords",
                       "beat.pulse"]),
     "sound": ("Sound", ["layers.pad", "layers.bass", "layers.melody", "layers.pulse", "layers.drums",
@@ -97,6 +97,15 @@ BIG_SCIOTA = parse_chart("""
 | G / | G / | G C | D7 G | G / | G / | G C | D7 G |
 | G D7 | D7 C | C Em | D7 G | G D7 | D7 C | C Em | D7 G |
 """, "G", preset_slots("major"))
+
+# The tunes' own melodies, for the Tune line (ambient/breaks.py): each chart above whose tune has an answer key in
+# the transcription project (tunes/dobro/<folder>/<folder>.musicxml): its folder, its key, how many of its bars to a
+# bar here (2: laid in two), and the bars of one pass (Red Wing's key is played through twice: its first 16).
+TUNE_MELODIES = {
+    "Red Wing": {"folder": "red-wing", "key": "G", "k": 2, "bars": 16},
+    "Down Yonder": {"folder": "down-yonder", "key": "G", "k": 2, "bars": 20},
+    "Big Sciota": {"folder": "big-sciota", "key": "G", "k": 1, "bars": 16},
+}
 
 # Harmonic rhythm: 0 16 bars a chord, 0.25 8, 0.5 4, 0.75 2, 1 one bar.
 HARMONY = {

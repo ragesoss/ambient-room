@@ -25,6 +25,8 @@ STYLES = {
     "Scattered": "single notes at random times, wandering",
     "Motif": "a one-bar figure repeated every bar like a riff, following the chords and slowly changing",
     "Phrases": "phrases in bars: an idea, its variation, a contrast, a cadence; questions answered on the home chord",
+    # ambient/breaks.py: over a chart whose tune has a melody (presets.TUNE_MELODIES); else as Phrases
+    "Tune": "the tune's own melody, played as a player takes a break on it: from as written to free (The tune)",
 }
 
 STEPS = 16

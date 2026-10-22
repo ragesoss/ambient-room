@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 
 from .config import Config, load_config
 from .engine import Engine, EngineError, FakeEngine
-from . import evolve, explain, music, samples
+from . import breaks, evolve, explain, music, samples
 from .room import STOP_FADE_S, Room
 from .presets import ASPECTS, WHOLE
 from .state import MOODS, Invalid
@@ -26,6 +26,8 @@ def create_app(cfg: Config) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         samples.orchestra(cfg.sounds_dir)  # which sampled voices have their fonts: the page says so from the start
+        # the Tune line's melodies: the tunes of the transcription project whose package the band plays from
+        breaks.use_project(Path(cfg.band.transcribe).expanduser().parents[1])
         engine = (FakeEngine() if cfg.engine == "fake"
                   else Engine(cfg.device, cfg.buffer_ms, cfg.gain_db, cfg.sounds_dir, cfg.block, cfg.output,
                               cfg.period_ms))

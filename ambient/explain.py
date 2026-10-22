@@ -80,7 +80,8 @@ def options() -> dict:
                               {"id": "range", "name": "Melodic range", "what": "how far up and down the line may go", "lo": "narrow", "hi": "wide"},
                               {"id": "leaps", "name": "Leaps", "what": "steps from note to note, or jumps", "lo": "stepwise", "hi": "leaping"},
                               {"id": "syncopation", "name": "Syncopation", "what": "notes off the beat: offbeat starts, anticipations, snaps", "lo": "on the beat", "hi": "off the beat"},
-                              {"id": "pickups", "name": "Pickups", "what": "how often a phrase starts with notes leading into its first bar", "lo": "never", "hi": "often"}]},
+                              {"id": "pickups", "name": "Pickups", "what": "how often a phrase starts with notes leading into its first bar", "lo": "never", "hi": "often"},
+                              {"id": "pull", "name": "The tune", "what": "with the Tune line, over a tune's chart: how much of the tune's own melody it keeps", "lo": "free", "hi": "as written"}]},
         "layers": {layer: {"name": LABELS[layer][0], "about": LABELS[layer][1],
                            "voices": [{"id": OFF, "about": "silent"}] * (layer not in ("drums", "pulse")) +
                                      [{"id": v, "about": about(layer, v)} for v in voices]}
@@ -103,6 +104,8 @@ def _melody(state: dict) -> dict:
                                                           "mostly off the beat", "syncopated throughout"]),
         "pickups": words(m.get("pickups", 0.4), ["phrases start on the bar line", "a pickup now and then",
                                                  "pickups into about half the phrases", "most phrases led into", "every phrase led into"]),
+        "pull": words(m.get("pull", 0.5), ["free over the chords", "the tune's cadences, free between", "the tune, played with",
+                                           "the tune, decorated", "the tune as written"]),
     }
 
 
