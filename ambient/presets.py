@@ -97,14 +97,27 @@ BIG_SCIOTA = parse_chart("""
 | G / | G / | G C | D7 G | G / | G / | G C | D7 G |
 | G D7 | D7 C | C Em | D7 G | G D7 | D7 C | C Em | D7 G |
 """, "G", preset_slots("major"))
+# Cherokee Shuffle (tunes/dobro/cherokee-shuffle/chords.txt there): the player's Strum Machine chart (2026-10-16), in
+# A, read in A and kept as degrees. An A part of 8 bars and a B part of 10 (its last two the A part's ending), each
+# twice as played (both endings A), laid in two as Red Wing (recorded at 170: 85 here). B's 9th bar, D for two beats
+# and E for two, is a beat of each here. A chord that goes on over a bar line is carried with "/": 31 chords, a loop
+# holds 32 (harmony.MAX_LOOP).
+CHEROKEE_SHUFFLE = parse_chart("""
+| A / | / F#m | D A | E A |
+| / / | / F#m | D A | E A |
+| D A | D A | D A | / F#m | D E A / |
+| D A | D A | D A | / F#m | D E A / |
+""", "A", preset_slots("major"))
 
 # The tunes' own melodies, for the Tune line (ambient/breaks.py): each chart above whose tune has an answer key in
 # the transcription project (tunes/dobro/<folder>/<folder>.musicxml): its folder, its key, how many of its bars to a
-# bar here (2: laid in two), and the bars of one pass (Red Wing's key is played through twice: its first 16).
+# bar here (2: laid in two), the bars of one pass (Red Wing's key is played through twice: its first 16), and the
+# bars of each part where a part is not a whole number of phrases (Cherokee's B, 10 bars: its phrases 4 and 6).
 TUNE_MELODIES = {
     "Red Wing": {"folder": "red-wing", "key": "G", "k": 2, "bars": 16},
     "Down Yonder": {"folder": "down-yonder", "key": "G", "k": 2, "bars": 20},
     "Big Sciota": {"folder": "big-sciota", "key": "G", "k": 1, "bars": 16},
+    "Cherokee Shuffle": {"folder": "cherokee-shuffle", "key": "A", "k": 2, "bars": 36, "parts": (8, 8, 10, 10)},
 }
 
 # Harmonic rhythm: 0 16 bars a chord, 0.25 8, 0.5 4, 0.75 2, 1 one bar.
@@ -140,6 +153,9 @@ HARMONY = {
                     _h("major", "Loop", 1.0, 0.0, DOWN_YONDER, plain=True)),
     "Big Sciota": ("Major, Big Sciota's chart: two parts of 4 bars, each twice; plain triads, the dominants as sevenths",
                    _h("major", "Loop", 1.0, 0.0, BIG_SCIOTA, plain=True)),
+    "Cherokee Shuffle": ("Major, Cherokee Shuffle's chart in two (two of its bars to a bar): an A part of 8 bars and a B "
+                         "part of 10, each twice; plain triads",
+                         _h("major", "Loop", 1.0, 0.0, CHEROKEE_SHUFFLE, plain=True)),
 }
 
 MELODY = {
@@ -322,13 +338,16 @@ WHOLE = {
                   "Bluegrass break", "Bluegrass", "String band", {}),
     "Folk song": ("Fingerpicked guitar, a harmonica line", "D", "Ballad", "Song", "Folk", "Folk", {}),
     "Country": ("A train beat on brushes, boom-chick guitar, a dobro", "G", "Bluegrass", "Song", "Country", "Country band", {}),
-    # The three dobro tunes: their charts, a dobro making up a tune over them, at their tempos
+    # The dobro tunes: their charts, a dobro making up a tune over them, at their tempos
     "Red Wing": ("Red Wing's chart in two at 100, a dobro making up a tune over it, a string band", "G", "Red Wing",
                  "Fiddle tune in two", "Bluegrass in two", "Country band", {"shape": {"tempo": 0.0}}),
     "Down Yonder": ("Down Yonder's chart in two at 120, a dobro making up a tune over it, a string band", "G",
                     "Down Yonder", "Fiddle tune in two", "Bluegrass in two", "Country band", {"shape": {"tempo": 0.1}}),
     "Big Sciota": ("Big Sciota's chart at 100, a dobro making up a tune over it, a string band", "G", "Big Sciota",
                    "Fiddle tune", "Bluegrass", "Country band", {"shape": {"tempo": 0.5}}),
+    "Cherokee Shuffle": ("Cherokee Shuffle's chart in two at 170, a dobro making up a tune over it, a string band", "A",
+                         "Cherokee Shuffle", "Fiddle tune in two", "Bluegrass in two", "Country band",
+                         {"shape": {"tempo": 0.35}}),
 }
 # What a preset can bring, toggle by toggle: the key, and each part's settings
 ASPECTS = {"key": ("Key", ["key"]), **{part: (name, paths) for part, (name, paths) in PARTS.items()}}

@@ -2,6 +2,8 @@
 
 import copy
 import random
+import re
+from dataclasses import replace
 
 import pytest
 
@@ -9,6 +11,8 @@ from ambient import breaks
 from ambient.breaks import BAR, Break, Note, Tune, measure
 from ambient.conductor import Conductor
 from ambient.engine import FakeEngine
+from ambient.music import KEYS
+from ambient.presets import TUNE_MELODIES
 from ambient.state import DEFAULT, MOODS, merge
 
 
@@ -64,6 +68,16 @@ def test_as_written_is_the_tune():
     assert line(br, 0) == tune.notes
     m = measure(line(br, 0), tune)
     assert m["strong_kept"] == m["arrivals_kept"] == m["tune_notes"] == 1.0
+
+
+def test_a_tunes_parts_split_its_phrases():
+    """Four bars a phrase within a part, a part's remainder joined to its last phrase (Cherokee Shuffle's AABB:
+    8, 8, 10, 10); a tune whose parts are not given is one part."""
+    tune = synthetic()
+    assert replace(tune, parts=(8, 8)).phrases() == tune.phrases()
+    aabb = Tune("aabb", 9, 36, [Note(0, 1, 57)], parts=(8, 8, 10, 10))
+    assert aabb.phrases() == [(0, 4), (4, 8), (8, 12), (12, 16), (16, 20), (20, 26), (26, 30), (30, 36)]
+    assert replace(aabb, parts=()).phrases()[-3:] == [(24, 28), (28, 32), (32, 36)]
 
 
 def test_phrases_arrivals_and_repeats():
@@ -140,12 +154,16 @@ def test_the_instruments_range_and_its_hammer_ons():
                     assert a.midi in breaks.IDIOMS["Dobro"].open_strings
 
 
-def _red_wing_state(style: str, pull: float = 0.5) -> dict:
-    s = copy.deepcopy(MOODS["Red Wing"])
+def _tune_state(mood: str, style: str, pull: float = 0.5) -> dict:
+    s = copy.deepcopy(MOODS[mood])
     s["melody"]["style"] = style
     s["melody"]["pull"] = pull
     s["evolve"]["rate"] = 0.0
     return s
+
+
+def _red_wing_state(style: str, pull: float = 0.5) -> dict:
+    return _tune_state("Red Wing", style, pull)
 
 
 def _play(state, melody_seed, break_seed=None, seconds=80):
@@ -215,3 +233,45 @@ def test_the_tunes_keys_read_as_one_pass():
     assert [n.midi for n in dy.lead_in] == [62, 61, 60] and [n.midi for n in dy.into_top()] == [62, 61, 60]
     bs = breaks.load_tune("big-sciota", "G", 16)
     assert [n.midi for n in bs.into_top()] == [50] and bs.notes[-1].t == 63.5
+
+
+def _chord_names(chords: list[tuple[int, ...]]) -> list[str]:
+    return [KEYS[c[0]] + ("m" if (c[1] - c[0]) % 12 == 3 else "") for c in chords]
+
+
+# Cherokee Shuffle's chart, a chord a beat (the transcription project's tunes/dobro/cherokee-shuffle/chords.txt):
+# A (8 bars), A, B (10), B
+CHEROKEE_A = ["A", "A", "A", "F#m", "D", "A", "E", "A"]
+CHEROKEE_B = ["D", "A", "D", "A", "D", "A", "A", "F#m", "D E", "A"]
+
+
+def test_cherokee_shuffles_chart():
+    s = _tune_state("Cherokee Shuffle", "Tune")
+    assert s["key"] == "A" and breaks.tune_for(s)[0] == "Cherokee Shuffle"
+    src = TUNE_MELODIES["Cherokee Shuffle"]
+    assert (src["k"], src["bars"], sum(src["parts"])) == (2, 36, 36)
+    assert sum(x["beats"] for x in s["harmony"]["loop"]) == 4 * 36 / 2  # one pass, laid in two
+    want = []
+    for bar in CHEROKEE_A * 2 + CHEROKEE_B * 2:
+        cs = bar.split()
+        want += [c for c in cs for _ in range(4 // len(cs))]
+    assert _chord_names(breaks.chart_beats(s, 2, 4 * 36)) == want
+
+
+@pytest.mark.skipif(breaks.project_root() is None, reason="needs the transcription project's tunes")
+def test_the_tune_line_plays_cherokee_shuffle():
+    folder = breaks.project_root() / "tunes" / "dobro" / "cherokee-shuffle"
+    bars = dict(re.findall(r"^([AB]\d+):\s+(.+)$", (folder / "chords.txt").read_text(), re.M))
+    played = [f"A{i}" for i in range(1, 9)] * 2 + [f"B{i}" for i in range(1, 11)] * 2
+    s = _tune_state("Cherokee Shuffle", "Tune", 1.0)
+    assert _chord_names(breaks.chart_beats(s, 2, 4 * 36)) == " ".join(bars[b] for b in played).split()
+    src = TUNE_MELODIES["Cherokee Shuffle"]
+    tune = breaks.load_tune(src["folder"], src["key"], src["bars"], parts=src["parts"])
+    assert tune.bars == 36 and tune.key == 9 and len(tune.melody()) == 110
+    assert tune.notes[0].midi == 57 and [n.midi for n in tune.into_top()] == [52]  # A3; E3 back to the top
+    # A's phrases land on F#4 and home; B's on E5 and, its last six bars, home
+    assert [tune.arrival(j).midi for j in range(8)] == [66, 57, 66, 57, 76, 57, 76, 57]
+    assert [tune.repeats(j) for j in range(8)] == [None, None, 0, 1, None, None, 4, 5]
+    c, _ = _play(s, 7, 3, seconds=36 * 4 * 60 / 170 + 3)
+    assert c.breaker is not None and c.breaker.k == 2 and c.breaker.shift == 0
+    assert [n for p, n in c.breaker.heard if p == 0] == tune.notes  # as written, the first time round

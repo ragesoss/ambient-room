@@ -5,7 +5,8 @@ its pull, each one pass of the tune over the same band, to files. Nothing is pla
         [--pulls 1,0.75,0.25,0] [--middle 0.5] [--seeds 1,2,3] [--lufs -20]
 
 For each tune, its mood (presets.WHOLE: its chart, the band, its tempo) with the Tune line on the voice in VOICES
-(the mood's dobro; the fiddle for Down Yonder). Each version is the conductor run with the band's dice and the
+(the mood's dobro; the fiddle for Down Yonder). Cherokee Shuffle is not in the default --tunes (the review's 21 clips
+were made without it): name it. Each version is the conductor run with the band's dice and the
 melody's apart (`Conductor(melody_rng=...)`, the break's own seed): the band's notes are the same in every version
 of a tune (checked, note for note), so the band is rendered once and each break's melody alone, then the two mixed.
 The clip: one bar of the tune before the pass (the band, and the pickup into bar 1), the pass, and the first note of
@@ -42,7 +43,7 @@ from ambient.sounds import instr  # noqa: E402
 from ambient.state import MOODS  # noqa: E402
 
 OUT = Path.home() / ".cache" / "challenge-reviews" / "2026-10-22-tune-breaks"
-VOICES = {"Red Wing": "Dobro", "Down Yonder": "Fiddle", "Big Sciota": "Dobro"}
+VOICES = {"Red Wing": "Dobro", "Down Yonder": "Fiddle", "Big Sciota": "Dobro", "Cherokee Shuffle": "Dobro"}
 BAND_SEED, MELODY_SEED = 1, 100  # the band's dice, and the free line's (the melodist's), the same in every version
 TAIL_BEATS, FADE_S = 2.0, 1.0
 
