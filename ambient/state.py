@@ -54,8 +54,10 @@ DEFAULT = {
     # how the melody is shaped
     "melody": {"style": "Scattered", "phrase": 0.55, "variation": 0.35, "range": 0.5, "leaps": 0.35,
                "syncopation": 0.25, "pickups": 0.4,
-               # the Tune line's pull (ambient/breaks.py): 1 the tune as written, 0 free over the chords
-               "pull": 0.5},
+               # the Tune line's pull (ambient/breaks.py): 1 the tune as written, 0 free over the chords; and its note
+               # density, the break's notes against the tune's (breaks.density_of: 0 a quarter of them, 0.5 as the
+               # pull plays it, 1 twice them)
+               "pull": 0.5, "density": 0.5},
     "shape": {"bright": 0.4, "motion": 0.3, "space": 0.6, "echo": 0.2,
               "notes": 0.3, "tempo": 0.21, "height": 0.5,
               "swing": 0.0, "pump": 0.4, "drive": 0.1},
@@ -266,7 +268,8 @@ def merge(state: dict, change: dict) -> dict:
                     if x not in MELODY_STYLES:
                         raise Invalid(f"unknown melody style {x!r}")
                     s["melody"]["style"] = x
-                elif name in ("phrase", "variation", "range", "leaps", "syncopation", "pickups", "pull"):
+                elif name in ("phrase", "variation", "range", "leaps", "syncopation", "pickups", "pull",
+                              "density"):
                     s["melody"][name] = _unit(x, name)
                 else:
                     raise Invalid(f"unknown melody setting {name!r}")

@@ -81,7 +81,8 @@ def options() -> dict:
                               {"id": "leaps", "name": "Leaps", "what": "steps from note to note, or jumps", "lo": "stepwise", "hi": "leaping"},
                               {"id": "syncopation", "name": "Syncopation", "what": "notes off the beat: offbeat starts, anticipations, snaps", "lo": "on the beat", "hi": "off the beat"},
                               {"id": "pickups", "name": "Pickups", "what": "how often a phrase starts with notes leading into its first bar", "lo": "never", "hi": "often"},
-                              {"id": "pull", "name": "The tune", "what": "with the Tune line, over a tune's chart: how much of the tune's own melody it keeps", "lo": "free", "hi": "as written"}]},
+                              {"id": "pull", "name": "The tune", "what": "with the Tune line, over a tune's chart: how much of the tune's own melody it keeps", "lo": "free", "hi": "as written"},
+                              {"id": "density", "name": "Note density", "what": "with the Tune line: how many notes the break plays against the tune's own; fewer simplifies the tune, more fills it", "lo": "simpler", "hi": "busier"}]},
         "layers": {layer: {"name": LABELS[layer][0], "about": LABELS[layer][1],
                            "voices": [{"id": OFF, "about": "silent"}] * (layer not in ("drums", "pulse")) +
                                      [{"id": v, "about": about(layer, v)} for v in voices]}
@@ -104,9 +105,21 @@ def _melody(state: dict) -> dict:
                                                           "mostly off the beat", "syncopated throughout"]),
         "pickups": words(m.get("pickups", 0.4), ["phrases start on the bar line", "a pickup now and then",
                                                  "pickups into about half the phrases", "most phrases led into", "every phrase led into"]),
+        "density": _density(m.get("density", 0.5)),
         "pull": words(m.get("pull", 0.5), ["free over the chords", "the tune's cadences, free between", "the tune, played with",
                                            "the tune, decorated", "the tune as written"]),
     }
+
+
+def _density(x: float) -> str:
+    """The Tune line's note density in words: its share of the tune's notes (breaks.density_of)."""
+    from .breaks import density_of
+    r = density_of(x)
+    if abs(r - 1) < 0.02:
+        return "the tune's own notes, and what the pull adds"
+    if r < 1:
+        return f"{round(100 * r)}% of the tune's notes: simpler"
+    return f"up to {round(100 * r)}% of the tune's notes: filled"
 
 
 def _words(x: float, ws: list[str]) -> str:

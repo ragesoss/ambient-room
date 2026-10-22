@@ -55,9 +55,34 @@ made are decorated, not a fill's, a lick's or a run's. The conductor plays them 
 (`conductor.play_strung_as`: the dobro's samples slide, hammer and pull on the string; a struck voice takes a slide
 into a note as a grace note).
 
+**The density** (`density`, the page's Note density; 2026-10-22, the transcription project's card
+`ambient-break-density`): the break's notes against the tune's own, apart from its pull. The player (2026-10-22): "a
+player would play different notes and rhythms from the standard melody, but not necessarily play something far
+busier ... with low note density, i'd want to hear it actually simplify the melody in some cases rather than ornament
+it". At 1, the default, a break is as its pull makes it (its fills and the free line as before). **Below 1** a phrase
+is held to that share of the tune's notes in it (from `1 - density_ease` down; between, the notes it plays over the
+tune's own give way in proportion), simplified as a player simplifies: the skeleton kept (the phrase's first note and
+its arrival always; then the notes on beats 1 and 3, the arrival's approach, a note where the chord changes, one
+where the tune strikes a note), and first dropped a fill's or a run's notes, a grace note, a repeated note (held
+instead), a passing or neighbour note; of the rest, the tune's own kept where the pull is high and the chord's tones
+where it is low. Each note left is held to the next (never into a bar the free line takes); where one would be held
+past its own length over a chord it is not in, a note dropped there is struck again (the harmonic rhythm heard), and
+one held longer than it was over other notes, out of its chord, moves to the chord's nearest. The free line's bars
+are held likewise to the share of the tune's notes in them (the tune's notes a bar, so a busy stretch of the tune
+keeps more), so a break near the free end plays other notes and rhythms, not more of them. **Above 1** a phrase's
+held notes are filled (as the pull fills them) until it has that share of the tune's notes, if it has fewer; the free
+line is not filled. The tune as written (pull 1) is the same at every density.
+
+**The departure by the tune's own density** (`BreakParams.local`, off unless set; the player, 2026-10-22, on Down
+Yonder: "a fiddle player would usually hit most of the standard notes in the low density portions ... and then
+innovate on the density parts more freely"): each note's moves and each bar's chance of the free line at a departure
+raised or lowered by how busy the tune is in that bar, so a sparse bar keeps more of the tune and a busy one departs
+further.
+
 **Its own dice.** A break has a random generator of its own (`seed`): the melody's choices alone, so the band under
-it is the same at every setting and seed (the A/B clips). Which rules are style and which idiom is recorded in the
-transcription project's `docs/knowledge-layers.md`.
+it is the same at every setting and seed (the A/B clips). The density has dice of its own besides, a phrase's and a
+free bar's from the seed, so a break at a density is its seed's break at 1, simplified or filled phrase by phrase.
+Which rules are style and which idiom is recorded in the transcription project's `docs/knowledge-layers.md`.
 """
 
 from __future__ import annotations
@@ -301,9 +326,37 @@ class BreakParams:
     approach: float = 0.3  # a run into an arrival: this x bell(d)
     answer: float = 0.2  # a repeat's departure: up by this x bell(d)
     passes: float = 0.1  # each pass after the first: the departure up by this x bell(d), three passes at most
+    # The density (2026-10-22, by hand, the player's ear to settle it: review 2026-10-22-break-density). Below 1, the
+    # notes a stretch plays over the tune's own give way over this much of the density, and from 1 - this down it is
+    # held to that share of the tune's notes; above 1, filled up to that share over this much. So the control has no
+    # step at 1, where the break is as before.
+    density_ease: float = 0.25
+    # The departure by the tune's own density, bar by bar (2026-10-22; the player on Down Yonder at 0.25: "a fiddle
+    # player would usually hit most of the standard notes in the low density portions ... and then innovate on the
+    # density parts more freely"). None: off, one departure for the phrase (as before). A number g: a note's moves
+    # and a bar's free line at d ** (1 / r ** g), r the tune's notes in its bar against its mean (from a quarter): a
+    # sparse bar keeps more of the tune, a busy one departs further; as written and free unchanged. Set by hand (2)
+    # for the player's ear (review 2026-10-22-break-density); not on until they say.
+    local: float | None = None
 
 
 PARAMS = BreakParams()
+
+DENSITY_LO, DENSITY_HI = 0.25, 2.0  # the page's Note density, its ends: a quarter of the tune's notes, twice them
+
+
+def density_of(x: float) -> float:
+    """The page's Note density (0 to 1, 0.5 the default) as a share of the tune's notes: a quarter of them to the
+    tune's own over its lower half, the tune's own to twice them over its upper."""
+    x = max(0.0, min(1.0, float(x)))
+    r = DENSITY_LO + (1 - DENSITY_LO) * 2 * x if x <= 0.5 else 1 + (DENSITY_HI - 1) * 2 * (x - 0.5)
+    return round(r, 6)
+
+
+def density_setting(r: float) -> float:
+    """The page's Note density for a share of the tune's notes (density_of's inverse)."""
+    r = max(DENSITY_LO, min(DENSITY_HI, float(r)))
+    return (r - DENSITY_LO) / (1 - DENSITY_LO) / 2 if r <= 1 else 0.5 + (r - 1) / (DENSITY_HI - 1) / 2
 
 
 class Break:
@@ -312,13 +365,17 @@ class Break:
 
     `chords`: a beat each over one pass, the chord sounding (pitch classes, root first) in the tune's own key.
     `k`: the tune's bars to one of the synth's (2: laid in two). `shift`: semitones from the tune's key to the key
-    played. `seed`: the break's own dice."""
+    played. `seed`: the break's own dice. `density`: its notes against the tune's (1: as its pull makes it)."""
 
     def __init__(self, tune: Tune, chords: list[tuple[int, ...]], pull: float, seed=None, k: int = 1,
-                 shift: int = 0, idiom: Idiom | None = None, params: BreakParams = PARAMS):
+                 shift: int = 0, idiom: Idiom | None = None, params: BreakParams = PARAMS, density: float = 1.0):
         self.tune, self.chords, self.k, self.shift = tune, chords, k, shift
         self.pull = pull
+        self.density = density
         self.rng = random.Random(seed)
+        # the density's dice, a phrase's and a free bar's own from this (not the break's: a break at a density is its
+        # seed's break at 1, simplified or filled)
+        self.dense_seed = seed if seed is not None else random.getrandbits(32)
         self.idiom = idiom or IDIOMS["any"]
         self.params = params
         self.first_pass = 0  # passes before it are not counted as later passes
@@ -327,9 +384,14 @@ class Break:
         self.reset()
 
     def reset(self) -> None:
-        self.done: dict[tuple[int, int], list] = {}  # (pass, phrase) -> its plan
+        self.done: dict[tuple[int, int], list] = {}  # (pass, phrase) -> its plan as varied
+        self.played: dict[tuple[int, int], list] = {}  # ... and as played, at the density
         self.plan: dict[int, list] = {}  # the synth's sixteenth -> [(MIDI, length, velocity, offset, how)]
         self.heard: list[tuple[int, Note]] = []  # (pass, note in the pass's beats) as played
+
+    def dense(self) -> bool:
+        """The density moved from 1 (else the break is as its pull makes it, its dice untouched)."""
+        return abs(self.density - 1.0) > 1e-9
 
     # -- harmony --
 
@@ -377,8 +439,30 @@ class Break:
             d += self.params.answer * b
         return min(d, 0.97)
 
+    def local_d(self, d: float, t0: float, span: float = BAR) -> float:
+        """The departure over [t0, t0 + span) by the tune's own density there (`BreakParams.local`); d when off."""
+        g = self.params.local
+        if g is None or d <= EPS or d >= 1 - EPS:
+            return d
+        mean = len(self.tune.melody()) / self.tune.bars
+        b0 = math.floor((t0 + EPS) / BAR) * BAR
+        here = sum(1 for n in self.tune.melody() if b0 - EPS <= n.t < b0 + max(span, BAR) - EPS)
+        r = max(0.25, here / (mean * max(1.0, span / BAR)))
+        return d ** (1 / r ** g)
+
     def phrase(self, pass_i: int, j: int) -> list:
-        """Phrase j's notes on pass `pass_i` (beats from the pass's start), and the free stretches in it."""
+        """Phrase j's notes on pass `pass_i` as played (beats from the pass's start), and the free stretches in it:
+        as varied, at the density."""
+        key = (pass_i, j)
+        if key not in self.played:
+            plan = self.varied(pass_i, j)
+            if self.dense() and EPS < self.departure(pass_i, j) < 1 - EPS:
+                plan = self._dense(plan, pass_i, j)
+            self.played[key] = plan
+        return self.played[key]
+
+    def varied(self, pass_i: int, j: int) -> list:
+        """Phrase j on pass `pass_i` as its pull varies it (the context of the phrases after it)."""
         key = (pass_i, j)
         if key not in self.done:
             b0, b1 = self.tune.phrases()[j]
@@ -425,13 +509,20 @@ class Break:
 
         # whole bars of the synth's from the free line (never the one the phrase lands in)
         free = set()
-        if d > p.free_from:
+        span = BAR * self.k
+        if p.local is None and d > p.free_from:
             pf = ((d - p.free_from) / (1 - p.free_from)) ** 1.5
             land = {self._app_bar(n.t) for n in [arr, *approach]}
             for a in range(self._app_bar(t0), self._app_bar(t1 - EPS) + 1):
                 if a not in land and rng.random() < pf:
                     free.add(a)
-        span = BAR * self.k
+        elif p.local is not None:  # each bar of the synth's by the tune's density there
+            land = {self._app_bar(n.t) for n in [arr, *approach]}
+            for a in range(self._app_bar(t0), self._app_bar(t1 - EPS) + 1):
+                da = self.local_d(d, a * span, span)
+                pf = ((da - p.free_from) / (1 - p.free_from)) ** 1.5 if da > p.free_from else 0.0
+                if a not in land and pf > 0 and rng.random() < pf:
+                    free.add(a)
         if free:  # the tune's notes there left out, and none ringing into them
             mel = [n for n in mel if self._app_bar(n.t) not in free]
             starts = sorted(a * span for a in free)
@@ -439,9 +530,13 @@ class Break:
                    for n in mel]
 
         # a strong note substituted by another tone of its chord
-        keep = 1.0 if d <= p.keep_from else 1 - (1 - p.keep_floor) * ((d - p.keep_from) / (1 - p.keep_from)) ** 1.5
+        def kept(x):
+            return 1.0 if x <= p.keep_from else 1 - (1 - p.keep_floor) * ((x - p.keep_from) / (1 - p.keep_from)) ** 1.5
+        keep = kept(d)
         out = []
         for n in mel:
+            if p.local is not None:
+                keep = kept(self.local_d(d, n.t))
             if strong(n.t) and n not in guard and (n not in head or d > 0.7) and rng.random() > keep:
                 c = [x for x in self._tones_near(n.midi, n.t, 5) if x % 12 != n.midi % 12]
                 if c:
@@ -455,7 +550,7 @@ class Break:
         out = []
         for n in mel:
             if (strong(n.t) and out and n.t - 0.5 >= t0 - EPS and (n != arr or d >= 0.4)
-                    and rng.random() < p.anticipate * d):
+                    and rng.random() < p.anticipate * self.local_d(d, n.t)):
                 prev = out[-1]
                 at = n.t - 0.5
                 if prev.t >= at - EPS:
@@ -478,7 +573,7 @@ class Break:
         out = []
         for i, n in enumerate(mel):
             nxt = mel[i + 1].midi if i + 1 < len(mel) else self._next_tune_note(t1)
-            chance = p.fill * d ** 0.7 * (0.5 if n == arr else 1.0)
+            chance = p.fill * self.local_d(d, n.t) ** 0.7 * (0.5 if n == arr else 1.0)
             if n.dur >= 1 - EPS and n.by != "anticipate" and rng.random() < chance:
                 filled = self._fill(n, nxt)
                 if n in guard:  # its attack, the fill's first note, stays as kept as it was
@@ -493,7 +588,7 @@ class Break:
         # a weak note changed
         out = []
         for i, n in enumerate(mel):
-            chance = p.passing * d * (0.3 if n in after else 1.0)
+            chance = p.passing * self.local_d(d, n.t) * (0.3 if n in after else 1.0)
             if not strong(n.t) and n.by == "tune" and n not in guard and rng.random() < chance:
                 prev = out[-1].midi if out else None
                 nxt = mel[i + 1].midi if i + 1 < len(mel) else self._next_tune_note(t1)
@@ -556,6 +651,9 @@ class Break:
             n = mel[i]
             nxt = mel[i + 1] if i + 1 < len(mel) else None
             led = out and out[-1].by in ("approach", "lick")
+            if p.local is not None:
+                dn = self.local_d(d, n.t)
+                pd = p.decorate * min(1.0, 2.5 * dn) * (1 - 0.6 * dn)
             if n.how == "pick" and n.dur >= 0.5 - EPS and n.by in DECORATED and not led and rng.random() < pd:
                 orn = self._ornament(n, nxt, out[-1] if out else None)
                 if orn is not None:
@@ -613,9 +711,9 @@ class Break:
         ms = sorted(weights)
         return rng.choices(ms, [weights[m] for m in ms])[0]
 
-    def _fill(self, n: Note, nxt: int | None) -> list[Note]:
+    def _fill(self, n: Note, nxt: int | None, rng: random.Random | None = None) -> list[Note]:
         """A held note as eighths (or a roll's triplets): its own pitch first, the rest moving on to the next."""
-        rng = self.rng
+        rng = rng or self.rng
         kinds = [("arpeggio", 3), ("run", 3), ("neighbour", 2)]
         if self.idiom.roll:
             kinds.append(("roll", 2))
@@ -796,6 +894,227 @@ class Break:
             prev = n
         return [n for n in res if n.dur > 0.04]
 
+    # -- the density --
+
+    def target(self, own: int, have: int) -> float:
+        """The notes a stretch plays at the density: `own` the tune's notes there, `have` the break's as varied.
+        Below 1, never more than it has, and from 1 - density_ease down that share of the tune's; above 1, never
+        fewer, and from 1 + density_ease up that share of the tune's."""
+        r, ease = self.density, self.params.density_ease
+        if r < 1:
+            give = max(0.0, 1 - (1 - r) / ease)  # the share of its notes over the tune's still played
+            return min(float(have), r * own + give * max(0, have - own))
+        take = min(1.0, (r - 1) / ease)
+        return have + take * max(0.0, r * own - have)
+
+    @staticmethod
+    def _count(x: float, rng: random.Random) -> int:
+        """A whole number of notes for a target, rounded up or down by its fraction."""
+        n = int(math.floor(x + EPS))
+        return n + (1 if rng.random() < x - n - EPS else 0)
+
+    def _dense(self, plan: list, pass_i: int, j: int) -> list:
+        """A phrase as varied, at the density: simplified to the target, or its held notes filled up to it."""
+        rng = random.Random(f"density {self.dense_seed} {pass_i} {j}")
+        b0, b1 = self.tune.phrases()[j]
+        t0, t1 = b0 * BAR, b1 * BAR
+        spans = [x for x in plan if isinstance(x, FreeSpan)]
+        notes = [x for x in plan if isinstance(x, Note)]
+        mel = [n for n in notes if n.how != "double"]
+        doubles = [n for n in notes if n.how == "double"]
+        own = [n for n in self.tune.melody() if t0 - EPS <= n.t < t1 - EPS
+               and not any(s.t0 - EPS <= n.t < s.t1 - EPS for s in spans)]
+        want = self._count(self.target(len(own), len(mel)), rng)
+        if want < len(mel):
+            mel = self._simplify(mel, want, j, t0, rng, [x.t0 for x in spans])
+        elif want > len(mel):
+            mel = self._fill_to(mel, want, j, t1, {round(x.t, 4) for x in doubles}, rng)
+        else:
+            return plan
+        tops = {round(n.t, 4) for n in mel}
+        out = self._clean(mel + [x for x in doubles if round(x.t, 4) in tops])
+        return sorted(out + spans, key=lambda x: x.t if isinstance(x, Note) else x.t0)
+
+    def _weight(self, n: Note, prev: Note | None, nxt: Note | None, rng: random.Random) -> float:
+        """How surely a player simplifying keeps a note: the meter's weight (beat 1, 3, 2 and 4, the offbeats); a
+        note where the chord changes more, and one where the tune strikes a note (its rhythm heard); a fill's, a
+        run's or the free line's notes, a grace note, a repeated note, a passing or neighbour note, a weak note out
+        of its chord less; the tune's own more where the pull is high, the chord's tones where it is low; and a little
+        chance. A push weighs as the beat it was pushed from."""
+        b = (n.t + (0.5 if n.by == "anticipate" else 0.0)) % BAR
+        on = lambda x: abs(x - round(x)) < EPS  # noqa: E731
+        w = 3.0 if abs(b) < EPS or abs(b - BAR) < EPS else 2.5 if abs(b - 2) < EPS else 1.5 if on(b) else \
+            1.0 if on(2 * b) else 0.5
+        chord = set(self.chord_at(n.t))
+        if prev is not None and set(self.chord_at(prev.t)) != chord:
+            w += 1.0
+        if round(n.t, 3) in self._tune_onsets():
+            w += 0.5
+        if n.by in ("fill", "lick", "approach", "free"):
+            w -= 1.0
+        if n.by in ("hammer", "pull", "triplet") and n.how == "pick" and n.dur < 0.5 - EPS:
+            w -= 1.5
+        if prev is not None and prev.midi == n.midi:  # held instead, before any other
+            w -= 2.0
+        elif (not strong(n.t) and prev is not None and nxt is not None and abs(n.midi - prev.midi) <= 2
+              and abs(nxt.midi - n.midi) <= 2):
+            w -= 0.5
+        if not strong(n.t) and n.midi % 12 not in chord:
+            w -= 0.5
+        w += 0.4 * self.pull * (n.by == "tune") + 0.4 * (1 - self.pull) * (n.midi % 12 in chord)
+        return w + 0.3 * rng.random()
+
+    def _landing(self, mel: list[Note], j: int) -> int | None:
+        """Where a varied phrase lands: its note nearest the tune's arrival, within an eighth, of its pitch class (a
+        lick's first note, a push's, a fill's first)."""
+        arr = self._fit(self.tune.arrival(j))
+        land = [i for i, n in enumerate(mel) if abs(n.t - arr.t) <= 0.5 + EPS and n.midi % 12 == arr.midi % 12]
+        return min(land, key=lambda i: abs(mel[i].t - arr.t)) if land else None
+
+    def _tune_onsets(self) -> set:
+        if not hasattr(self, "_onsets"):
+            self._onsets = {round(n.t, 3) for n in self.tune.melody()}
+        return self._onsets
+
+    def _simplify(self, mel: list[Note], want: int, j: int, t0: float, rng: random.Random,
+                  walls: list[float] = ()) -> list[Note]:
+        """The phrase with `want` notes: its first and its arrival kept, the approach likelier, the rest by weight,
+        none struck again just before the next phrase's first; a note struck where one left would be held over a
+        chord it is not in; each note left held to the next (`_hold`), none into a bar of the free line's (`walls`).
+        (A bonus for a repeat's notes where the phrase it repeats kept its own changed no choice over 20 seeds of
+        three tunes: the skeleton is already the same; not kept.)"""
+        land_i = self._landing(mel, j)
+        must = {i for i, n in enumerate(mel) if abs(n.t - t0) < EPS}
+        if land_i is not None:
+            must.add(land_i)
+        at = mel[land_i].t if land_i is not None else self.tune.arrival(j).t
+        score = {}
+        for i, n in enumerate(mel):
+            w = self._weight(n, mel[i - 1] if i else None, mel[i + 1] if i + 1 < len(mel) else None, rng)
+            score[i] = w + (1.0 if at - 2 - EPS <= n.t < at - EPS else 0.0)
+        b1 = self.tune.phrases()[j][1]
+        ahead = self._next_tune_note(b1 * BAR)  # the next phrase's first note, kept there: not struck just before it
+        line = mel if ahead is None else mel + [self._fit(Note(b1 * BAR, 0.0, ahead))]
+        end = max(n.end for n in mel)
+        keep = self._choose(line, want + len(line) - len(mel), must | set(range(len(mel), len(line))), score)
+        keep = [i for i in self._restrike(line, keep, end, walls) if i < len(mel)]
+        return self._hold(mel, keep, end, must, rng, walls)
+
+    @staticmethod
+    def _stop(t: float, stop: float, walls) -> float:
+        """Where a note held from t stops: at `stop`, or at a wall before it (a bar of the free line's)."""
+        return min([stop] + [w for w in walls if t + EPS < w < stop])
+
+    def _hold(self, line: list[Note], keep: list[int], end: float, must: set, rng: random.Random,
+              walls=()) -> list[Note]:
+        """The notes kept, each held to the next (the last to `end`; none into a bar of the free line's). A main note
+        whose grace note is gone goes back on the grace note's time, and one sounded from a note gone is picked. A
+        note held half a beat or more past its own length over other notes, not in its chord, moves to the chord's
+        nearest note (not the note before or after it): always a fill's, a run's or the free line's, the tune's own
+        as often as the pull is low."""
+        out = []
+        for k, i in enumerate(keep):
+            n = line[i]
+            if i and i - 1 not in keep and n.how in ("hammer", "pull"):  # the note it was sounded from is gone
+                g = line[i - 1]
+                if g.by == n.by and abs(g.end - n.t) < EPS and g.dur < 0.5 - EPS:  # its grace: back on its time
+                    n = replace(n, t=g.t, dur=n.dur + g.dur)
+                n = replace(n, how="pick")
+            nxt = keep[k + 1] if k + 1 < len(keep) else None
+            stop = self._stop(n.t, line[nxt].t if nxt is not None else end, walls)
+            over = line[i + 1:nxt if nxt is not None else len(line)]
+            if (any(x.midi != n.midi for x in over) and stop - n.t > n.dur + 0.5 - EPS and i not in must
+                    and n.midi % 12 not in self.chord_at(n.t) and (n.by != "tune" or rng.random() < 1 - self.pull)):
+                near = {out[-1].midi if out else None, line[nxt].midi if nxt is not None else None}
+                chord = set(self.chord_at(n.t))  # in the line's own register (the free line's is moved after)
+                c = [x for x in range(n.midi - 4, n.midi + 5) if x % 12 in chord and x not in near]
+                if c:
+                    n = replace(n, midi=min(c, key=lambda x: (abs(x - n.midi), x)), by="held")
+            out.append(replace(n, dur=max(n.dur, stop - n.t)))
+        return out
+
+    @staticmethod
+    def _choose(line: list[Note], want: int, must: set, score: dict) -> list[int]:
+        """The notes kept (their places, in order): those that must be, then the rest by score, none the same note
+        as the one kept before or after it within two beats (a repeated note is held instead)."""
+        keep = set(must)
+        for i in sorted((i for i in range(len(line)) if i not in must), key=lambda i: -score[i]):
+            if len(keep) >= want:
+                break
+            before = max((k for k in keep if k < i), default=None)
+            after = min((k for k in keep if k > i), default=None)
+            if any(k is not None and line[k].midi == line[i].midi and abs(line[k].t - line[i].t) < 2 - EPS
+                   for k in (before, after)):
+                continue
+            keep.add(i)
+        return sorted(keep)
+
+    def _restrike(self, line: list[Note], keep: list[int], end: float, walls=()) -> list[int]:
+        """The notes kept, with a note struck where one left would be held, past its own length, over a chord it is
+        not in: of the notes dropped there, the one sounding as that chord comes (else the first after it). A player
+        simplifying still marks the changes."""
+        keep = sorted(keep)
+        k = 0
+        while k < len(keep):
+            n = line[keep[k]]
+            nxt = keep[k + 1] if k + 1 < len(keep) else len(line)
+            stop = self._stop(n.t, line[nxt].t if nxt < len(line) else end, walls)
+            b, add = math.ceil(n.end - EPS), None
+            while b < stop - EPS and add is None:
+                if n.midi % 12 not in self.chord_at(b):
+                    gone = [x for x in range(keep[k] + 1, nxt) if line[x].midi != n.midi and (
+                        nxt >= len(line) or line[x].midi != line[nxt].midi or line[nxt].t - line[x].t >= 2 - EPS)]
+                    on = [x for x in gone if line[x].t <= b + EPS]
+                    add = on[-1] if on else next((x for x in gone if line[x].t > b), None)
+                    if add is None:
+                        break
+                b += 1
+            if add is not None:
+                keep = sorted(keep + [add])
+            else:
+                k += 1
+        return keep
+
+    def _fill_to(self, mel: list[Note], want: int, j: int, t1: float, doubled: set,
+                 rng: random.Random) -> list[Note]:
+        """The phrase filled to `want` notes or more where it has room: its held notes (a beat or more; not a double
+        stop's) filled as the pull fills them, in a random order, the arrival last."""
+        land_i = self._landing(mel, j)
+        cands = [i for i, n in enumerate(mel) if n.dur >= 1 - EPS and n.by in DECORATED
+                 and round(n.t, 4) not in doubled]
+        rng.shuffle(cands)
+        cands.sort(key=lambda i: i == land_i)
+        filled, have = {}, len(mel)
+        for i in cands:
+            if have >= want:
+                break
+            nxt = mel[i + 1].midi if i + 1 < len(mel) else self._next_tune_note(t1)
+            f = self._fill(mel[i], nxt, rng)
+            filled[i] = f
+            have += len(f) - 1
+        return [x for i, n in enumerate(mel) for x in filled.get(i, [n])]
+
+    def _thin_free(self, notes: list[list], pass_i: int, a: int, t0: float, step0: int) -> list[list]:
+        """A bar of the free line ([sixteenth, MIDI, length, velocity] each, in order) at a density under 1: held to
+        the target against the tune's notes in the bar, its first note kept, the rest by the same weights as a
+        phrase's (in the tune's beats), struck where the chord changes under a note left, each held to the next."""
+        if not notes or self.density >= 1:
+            return notes
+        rng = random.Random(f"density {self.dense_seed} free {pass_i} {a}")
+        t1 = t0 + BAR * self.k
+        own = sum(1 for n in self.tune.melody() if t0 - EPS <= n.t < t1 - EPS)
+        want = max(1, self._count(self.target(own, len(notes)), rng))
+        if want >= len(notes):
+            return notes
+        beat = lambda x: t0 + (x[0] - step0) * self.k / 4  # noqa: E731
+        line = [Note(beat(x), x[2] * self.k / 4, x[1] - self.shift, "pick", 0, "free") for x in notes]
+        score = {i: self._weight(n, line[i - 1] if i else None, line[i + 1] if i + 1 < len(line) else None, rng)
+                 for i, n in enumerate(line)}
+        end = max(n.end for n in line)
+        keep = self._restrike(line, self._choose(line, want, {0}, score), end)
+        held = self._hold(line, keep, end, {0}, rng)
+        return [[notes[i][0], h.midi + self.shift, h.dur * 4 / self.k, notes[i][3]] for i, h in zip(keep, held)]
+
     # -- played a bar of the synth at a time --
 
     def plan_bar(self, pass_i: int, a: int, step0: int, free: dict[int, list] | None = None) -> None:
@@ -805,6 +1124,14 @@ class Break:
         free = free or {}
         span = BAR * self.k
         t0, t1 = a * span, (a + 1) * span
+        if self.pull <= EPS and self.dense():  # the free line, held to the density
+            notes = [[st + frac, m, length, vel] for st in sorted(free) for m, length, vel, frac in free[st]]
+            for at, m, length, vel in self._thin_free(notes, pass_i, a, t0, step0):
+                st = int(math.floor(at + EPS))
+                self.plan.setdefault(st, []).append((m, length, vel, at - st))
+                self.heard.append((pass_i, Note(t0 + (at - step0) * self.k / 4, length * self.k / 4,
+                                                m - self.shift, "pick", 0, "free")))
+            return
         if self.pull <= EPS:
             for st, items in free.items():
                 for m, length, vel, frac in items:
@@ -821,6 +1148,8 @@ class Break:
             for st in sorted(free):
                 for m, length, vel, frac in free[st]:
                     notes.append([st + frac, m, length, vel])
+            if self.dense():
+                notes = self._thin_free(notes, pass_i, a, t0, step0)
             if notes:
                 lo, hi = self.tune.range()
                 mid = (lo + hi) / 2 + self.shift
@@ -882,11 +1211,14 @@ def sounding(line: list[Note], t: float) -> Note | None:
     return max(on, key=lambda n: n.t) if on else None
 
 
-def measure(line: list[Note], tune: Tune) -> dict:
+def measure(line: list[Note], tune: Tune, chords: list[tuple[int, ...]] | None = None) -> dict:
     """How much of the tune a line (one pass, in its beats) keeps: the tune's notes on the strong beats (those
     starting on 1 or 3), the line sounding the same there (the pitch, and the pitch class: an octave moved); its
     arrivals sounding at their time (within an eighth); the line's notes that are the tune's own (onset and pitch);
-    and the moves made."""
+    its notes a bar, and against the tune's (`density`); the tune's onsets where it strikes a note too
+    (`onsets_kept`: its rhythm heard); each repeated phrase's notes at the same place and pitch class as the phrase
+    it repeats (`repeats_alike`); with the chords (a beat each), the chord changes it strikes a note at, within an
+    eighth before or a sixteenth after (`changes_struck`); and the moves made."""
     tm = tune.melody()
     pairs = [(n.t, n) for n in tm if strong(n.t) and n.t < tune.beats - EPS]
     same = pc = 0
@@ -903,10 +1235,30 @@ def measure(line: list[Note], tune: Tune) -> dict:
     mel = [n for n in line if n.how != "double"]
     from collections import Counter
     moves = Counter(n.by for n in line if n.by != "tune")
+    starts = sorted(n.t for n in mel)
+    near = lambda t, lo, hi: any(t - lo - EPS <= x <= t + hi + EPS for x in starts)  # noqa: E731
+    onsets = sum(near(n.t, 0.05, 0.05) for n in tm if n.t < tune.beats - EPS)
+    alike, rep_n = 0, 0
+    for j in range(len(tune.phrases())):
+        i = tune.repeats(j)
+        if i is None:
+            continue
+        (a0, a1), (b0, b1) = tune.phrases()[i], tune.phrases()[j]
+        then = {(round(n.t - a0 * BAR, 3), n.midi % 12) for n in mel if a0 * BAR - EPS <= n.t < a1 * BAR - EPS}
+        now = [(round(n.t - b0 * BAR, 3), n.midi % 12) for n in mel if b0 * BAR - EPS <= n.t < b1 * BAR - EPS]
+        alike += sum(x in then for x in now)
+        rep_n += len(now)
+    extra = {}
+    if chords:
+        changes = [b for b in range(1, int(tune.beats)) if set(chords[b % len(chords)]) != set(chords[b - 1])]
+        extra["changes_struck"] = sum(near(b, 0.5, 0.25) for b in changes) / max(1, len(changes))
     return {"strong_kept": same / max(1, len(pairs)), "strong_pc_kept": pc / max(1, len(pairs)),
+            "onsets_kept": onsets / max(1, len([n for n in tm if n.t < tune.beats - EPS])),
+            "repeats_alike": alike / max(1, rep_n), **extra,
             "arrivals_kept": hit / max(1, len(arrs)),
             "tune_notes": sum((round(n.t, 3), n.midi) in own for n in mel) / max(1, len(mel)),
-            "notes_a_bar": len(mel) / tune.bars, "moves": dict(sorted(moves.items()))}
+            "notes_a_bar": len(mel) / tune.bars, "density": len(mel) / max(1, len(tm)),
+            "moves": dict(sorted(moves.items()))}
 
 
 def chart_beats(state: dict, k: int, beats: int, shift: int = 0) -> list[tuple[int, ...]]:
