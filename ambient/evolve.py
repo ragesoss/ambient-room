@@ -128,7 +128,8 @@ HARMONY_NAMES = {"style": "Progression", "loop": "Loop chords", "length": "Cycle
                  "rhythm": "Harmonic rhythm", "size": "Chord size", "plain": "Major and minor triads only",
                  "borrow": "Borrowing"}
 MELODY_NAMES = {"style": "Melody style", "phrase": "Phrase length", "variation": "Variation",
-                "range": "Melodic range", "leaps": "Leaps", "syncopation": "Syncopation", "pickups": "Pickups"}
+                "range": "Melodic range", "leaps": "Leaps", "syncopation": "Syncopation", "pickups": "Pickups",
+                "pull": "The tune"}
 
 
 def energy(s: dict) -> float:
@@ -269,7 +270,7 @@ def _move(path: str, s: dict, rng: random.Random, size: float):
         k = path[7:]
         if k == "style":
             from .melody import STYLES
-            v = rng.choice([x for x in STYLES if x != s["melody"]["style"]])
+            v = rng.choice([x for x in STYLES if x not in (s["melody"]["style"], "Tune")])  # the tune's: chosen only
             return {"melody": {"style": v}}, f"Melody style: {s['melody']['style']} → {v}"
         x = s["melody"][k]
         y = _nudge(x, 0.05, 0.95, rng, size)

@@ -808,6 +808,62 @@ alone the font is the same file byte for byte (`tests/test_samples.py` checks th
   it is, the tool's E1, the old E1 with its clicks taken out; blind, loudness matched). Not deployed: the unit has the
   2026-10-15 font. Needs the transcription project's matching commit (`transcribe.click`).
 
+### Breaks on a tune's melody (2026-10-22)
+
+The player (2026-10-21): "add a representation of the actual melody to the fiddle tunes that are set, but make it
+treat those as an improvising bluegrass musician would: something to vary, iterate on, decorate, and play with (to
+varying degrees, from an exact replication of the melody to a completely free melody that only takes the chords into
+account (like the current version), but the interesting parts are all in the middle where the melody has a strong
+influence but there's also lots of variation and room for surprise). i'd like to use ambient to close in on some
+approaches that we can apply to UD later on, like having members of the band take breaks." The transcription
+project's card `ambient-tune-melody`; its findings, "Breaks on a tune's melody", have the numbers.
+
+- **The Tune line** (`ambient/breaks.py`; the melody style "Tune"). Chosen, not imposed: no preset, mood or default
+  changed, and evolution never picks it. Over Red Wing's, Down Yonder's or Big Sciota's chart
+  (`presets.TUNE_MELODIES`) it plays that tune's melody, laid in two where the chart is. The melody is the tune's
+  answer key in the transcription project, read with that project's score reader when the style is chosen (the
+  server looks in the project its `[band] transcribe` names); there is no copy here, since the keys are the player's
+  own arrangements. Over any other chart, or with no tunes to hand, the Tune line is the Phrases line.
+- **One control, "The tune"** (`melody.pull`, 0.5 unless set; the Melody tab's slider, free to as written): 1 plays
+  the tune as written, 0 the free line over the chords (the melodist's Phrases, note for note today's). Between,
+  the module's docstring has the rules: what is kept (the strong beats' notes, every phrase's landing note and the
+  notes into it) and what is played with (fills, passing notes, pushes, octaves, a G run at a home cadence, a run into
+  a landing, a repeated phrase answered, later passes further, past the middle whole bars of the free line). Each
+  surprise lands back on the tune by the phrase's end.
+- **Decoration by the instrument**: the style says whether a note is decorated, the voice's idiom how (`IDIOMS`): the
+  dobro slides into a note, hammers on only from an open string and pulls off only to one, double stops a third or a
+  sixth under, rolls a held note; the fiddle plays from its G string up (a tune's lower notes an octave up). The
+  dobro's samples slide, hammer and pull on the string (`conductor.play_strung_as`, `HAMMER_S`, `SLIDE_MAX`); a struck
+  voice takes a slide into a note as a grace note (`GRACE_S`). Notes the Tune line places have none of the hand's
+  random slides.
+- **Its own dice**: `Conductor(melody_rng=...)` gives the melody its own random generator, and `break_seed` the
+  break's. Without them nothing changes: the melodist shares the conductor's dice, as before. With them the band's
+  notes are the same under every line, note for note (`tests/test_breaks.py`).
+- **Measured** without sound, 20 seeds each, the first pass: the tune's notes that start on beats 1 and 3 that the
+  break sounds there, and the share of the break's notes that are the tune's own.
+
+  | The tune | Red Wing (dobro) | Down Yonder (fiddle) | Big Sciota (dobro) |
+  |---|---|---|---|
+  | 1, as written | 100% / 100% | 97% / 95% (its bar 12 an octave up) | 100% / 100% |
+  | 0.75 | 98% / 73% | 92% / 68% | 92% / 73% |
+  | 0.5 | 84% / 57% | 79% / 55% | 66% / 52% |
+  | 0.25 | 53% / 41% | 49% / 39% | 39% / 36% |
+  | 0, free | 2% / 1% | 3% / 1% | 5% / 3% |
+
+  Every phrase's landing note is there at 0.25 to 1 (100%); free, 62%, 34% and 100% by chance. At 0.5 the later
+  passes depart further: Red Wing's strong-beat notes 84%, 72%, 60% over three passes.
+- **Breaks for the ear**: `tools/tune_breaks.py` renders a tune's breaks to files (Csound offline, nothing heard): the
+  band once, each break's melody alone, then mixed; the clip a bar before the pass, the pass, and the next pass's first
+  note, -20 LUFS each. The 21 clips of the transcription project's review `2026-10-22-tune-breaks` (seven a tune:
+  1, 0.75, 0.5 three times, 0.25, 0) are in `~/.cache/challenge-reviews/2026-10-22-tune-breaks/`. The tool checks
+  that the band's notes are the same in every version and that the engine was given every note of the break.
+- **Toward the band** (the Ugly Duckling String Band): a member's break is this line at a pull, on its own dice,
+  landing on the tune's phrases while the band backs it; to come, calling the breaks (card `band-form-calls`), each
+  member's idiom (the banjo's rolls, the fiddle's double stops) and the band's tunes' melodies.
+- `tests/test_breaks.py` (14); the suite 115 passed, 1 skipped (FluidSynth loadable; no ctcsound under Miniconda),
+  and under the venv the engine's, the conductor's, the server's and the breaks' tests 76 passed. The UD self-check
+  failed now and then while another agent's jobs loaded the desktop, on main as here (an underrun). Not deployed.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.

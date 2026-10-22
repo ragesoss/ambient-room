@@ -15,7 +15,7 @@ import math
 import random
 from collections import deque
 
-from . import music, samples
+from . import breaks, music, samples
 from .harmony import (Harmonist, at_step, chord_bars, chord_scale, item_slot, loop_chord, numeral as degree_numeral,
                       played, timeline)
 from .melody import Melodist
@@ -43,6 +43,10 @@ MELODY_RING = {"Bell": 2.5, "Pluck": 1.5, "Kalimba": 1.5, "Felt": 1.8, "E. piano
 # (the MuseScore dobro spike's, from the player's slides, ../dobro-transcription
 # docs/musescore-dobro-rendering-spike.md) and a slide between notes arrives on the beat.
 SLIDE, SLIDE_IN, SLIDE_S = 0.3, 0.1, 0.08
+# A note the Tune line (ambient/breaks.py) says how to play: slid from the string's note (SLIDE_S a semitone, up to
+# SLIDE_MAX semitones), hammered on or pulled off (sounded from it with no pick, HAMMER_S), slid into from below, or
+# picked; no habits of the hand's. A struck voice takes a slide into a note as a grace note GRACE_S before it.
+SLIDE_MAX, HAMMER_S, GRACE_S = 5, 0.012, 0.06
 
 # Guitar voices play their chords' patterns as guitar chords (music.guitar_shape): the bass on its
 # own string, then the other strings strummed (STRUM_S apart, down low to high), damped short for a
@@ -161,12 +165,22 @@ def hits(pattern: str, k: int) -> float:
 
 
 class Conductor:
-    def __init__(self, engine, rng: random.Random | None = None):
+    def __init__(self, engine, rng: random.Random | None = None, melody_rng: random.Random | None = None):
+        """`melody_rng`: the melody's own dice (A/B renders: the band the same under every line); None, the
+        conductor's (as before 2026-10-22)."""
         self.engine = engine
         self.rng = rng or random.Random()
         self.state: dict | None = None
-        self.melodist = Melodist(self.rng)
+        self.melodist = Melodist(melody_rng or self.rng)
         self.harmonist = Harmonist(self.rng)
+        # the Tune line (ambient/breaks.py): its break, the seed of the break's own dice (None: the system's), what
+        # it was made for; and the sixteenths from which and until which the melody is heard (a render's clip; None:
+        # always)
+        self.breaker: breaks.Break | None = None
+        self.break_seed = None
+        self.break_for: tuple | None = None
+        self.melody_from: float | None = None
+        self.melody_until: float | None = None
         # what the page draws as it is heard: drum hits, notes, steps, each
         # with its score time
         self.events: deque = deque(maxlen=800)
@@ -181,6 +195,9 @@ class Conductor:
         self.bar = -1  # bars since the start: phrases and chord changes count from here
         self.melodist.reset()
         self.harmonist.reset()
+        if self.breaker is not None:
+            self.breaker.reset()
+            self.breaker.first_pass = 0
         self.slot = 0  # chords since the start: each chord_bars long, on bar lines
         self.chord_end = self.next_step  # when the sounding chord gives way
         self.next_melody = self.next_step
@@ -222,6 +239,7 @@ class Conductor:
         for layer, lc in L.items():
             silent = lc["voice"] == OFF or (layer in ("drums", "pulse") and B[layer] == OFF)
             e.set(layer, 0.0 if silent else lc["level"])
+        self.sync_break()
         if old is None:
             return
         # A new key, scale, tuning, chord voice or chord rhythm is heard at
@@ -250,6 +268,53 @@ class Conductor:
             self.melodist.reset()
         if old["shape"]["notes"] < sh["notes"]:
             self.next_melody = min(self.next_melody, self.engine.time() + 0.5)
+
+    def sync_break(self) -> None:
+        """The Tune line's break, over a chart whose tune has a melody (presets.TUNE_MELODIES): made again when the
+        tune, the key, the chords or the voice change; a new pull taken up from its next phrase. Over any other
+        harmony, or with the tune's key not to hand, the Tune line is the free line (Phrases)."""
+        s = self.state
+        found = breaks.tune_for(s) if s["melody"]["style"] == "Tune" else None
+        if found is None:
+            self.breaker, self.break_for = None, None
+            return
+        name, src = found
+        h, voice = s["harmony"], s["layers"]["melody"]["voice"]
+        made_for = (name, s["key"], tuple(music.slots_of(s["tones"])), h["size"], h["plain"], voice, self.break_seed)
+        if made_for == self.break_for and self.breaker is not None:
+            self.breaker.pull = s["melody"]["pull"]
+            return
+        try:
+            tune = breaks.load_tune(src["folder"], src["key"], src["bars"])
+        except Exception as e:  # noqa: BLE001 (no tunes here: the free line plays)
+            self.error = f"the tune's melody: {type(e).__name__}: {e}"
+            self.breaker, self.break_for = None, None
+            return
+        shift = (music.KEYS.index(s["key"]) - tune.key) % 12
+        shift -= 12 if shift > 6 else 0
+        chords = breaks.chart_beats(s, src["k"], int(tune.beats), shift)
+        self.breaker = breaks.Break(tune, chords, s["melody"]["pull"], self.break_seed, src["k"], shift,
+                                    breaks.IDIOMS.get(voice, breaks.IDIOMS["any"]))
+        pos = self.chart_bar()
+        self.breaker.first_pass = max(0, self.bar) // pos[1] if pos else 0
+        self.break_for = made_for
+
+    def melody_state(self) -> dict:
+        """The settings the melodist plays by: the Tune line's free line is its Phrases."""
+        s = self.state
+        if s["melody"]["style"] != "Tune":
+            return s
+        return {**s, "melody": {**s["melody"], "style": "Phrases"}}
+
+    def plan_break(self) -> None:
+        """This bar of the Tune line: the break's notes, or the free line's (the melodist's, as just planned) where
+        the break takes it."""
+        pos = self.chart_bar()
+        if pos is None:
+            return
+        free = {st: self.melodist.plan.pop(st) for st in range(self.steps, self.steps + STEPS)
+                if st in self.melodist.plan}
+        self.breaker.plan_bar(max(0, self.bar) // pos[1], pos[0], self.steps, free)
 
     def beat(self) -> float:
         return 60.0 / bpm(self.state["shape"]["tempo"])
@@ -328,10 +393,11 @@ class Conductor:
         step = self.step_s()
         s = self.state
         shaped = s["melody"]["style"] != "Scattered"
+        ms = self.melody_state()
         if k == 0:
             self.bar += 1
             # a phrase may start (with a chart, at its top): the chord can lean to its cadence
-            self.melodist.begin_bar(self.bar, s, self.chart_bar())
+            self.melodist.begin_bar(self.bar, ms, self.chart_bar())
         new_chord = self.change_now or self.pcs is None or self.chord_due(k)
         if new_chord:
             self.chord(t, k)
@@ -339,8 +405,10 @@ class Conductor:
             self.plan_bass(k)
         if k == 0 and shaped:  # this bar's melody, against the chords sounding in it
             notes = self.scale_notes(*melody_range(s["shape"]["height"], s["melody"]["range"]))
-            self.melodist.plan_bar(self.bar, self.steps, s, notes, self.chord_in_bar, self.lead_in_bar,
+            self.melodist.plan_bar(self.bar, self.steps, ms, notes, self.chord_in_bar, self.lead_in_bar,
                                    self.respell_in_bar)
+            if self.breaker is not None:  # the Tune line: the break's bar, or the free line's
+                self.plan_break()
         tp = t + (swing_delay(s["shape"]["swing"], step) if k % 2 else 0.0)
         self.emit(t, "step", k=k)
         self.drums(tp, k)
@@ -777,17 +845,30 @@ class Conductor:
             self.emit(tp, "glint", **self.pitch_of(n))
 
     def shaped_melody(self, t: float) -> None:
-        """Motifs and phrases (ambient/melody.py), as planned bar by bar."""
+        """Motifs and phrases (ambient/melody.py), or the Tune line's break (ambient/breaks.py), as planned bar by
+        bar. A break's note may say how it is played (the fifth item): see play_strung, and a struck voice's grace
+        note into a note slid into."""
         v = self.voice("melody")
-        for note, length, vel, frac in self.melodist.at(self.steps):
+        source = self.breaker if self.breaker is not None else self.melodist
+        for item in source.at(self.steps):
+            note, length, vel, frac = item[:4]
+            how = item[4] if len(item) > 4 else None
             if v == OFF:
+                continue
+            here = self.steps + frac
+            if (self.melody_from is not None and here < self.melody_from - 1e-6) or \
+                    (self.melody_until is not None and here >= self.melody_until - 1e-6):
                 continue
             at = t + frac * self.step_s()  # a thirty-second falls between the sixteenths
             amp = 0.09 * trim("melody", v) * phrase_trim(v) * (0.55 + 0.45 * vel)
             if samples.strung("melody", v):
-                self.play_strung(at, note, length * self.step_s(), amp)
+                self.play_strung(at, note, length * self.step_s(), amp, how)
                 continue
             dur = max(length * self.step_s() * 0.95, MELODY_RING.get(v, 0.06))
+            if how and how.startswith("slide-in"):  # a grace note from below, just before
+                bend = int(how.split(":")[1]) if ":" in how else 2
+                self.engine.note(max(0.0, at - GRACE_S), instr("melody", v), GRACE_S * 1.2, self.hz(note - bend),
+                                 amp * 0.6, LEVEL["melody"])
             self.engine.note(at, instr("melody", v), dur, self.hz(note), amp, LEVEL["melody"])
             self.emit(at, "melody", dur=round(dur, 3), **self.pitch_of(note))
 
@@ -813,10 +894,14 @@ class Conductor:
         self.last_string = k
         return k, fret
 
-    def play_strung(self, at: float, note: int, length_s: float, amp: float) -> None:
+    def play_strung(self, at: float, note: int, length_s: float, amp: float, how: str | None = None) -> None:
         """A melody note on a string of the voice's (the dobro's): it rings until that string is
         picked again (or samples.RING_S); now and then it slides from the string's last note
-        instead of a new pick, or is picked below its pitch and slid up (SLIDE, SLIDE_IN)."""
+        instead of a new pick, or is picked below its pitch and slid up (SLIDE, SLIDE_IN).
+        `how` (the Tune line's): as it says, and no habits of the hand's."""
+        if how is not None:
+            self.play_strung_as(at, note, length_s, amp, how)
+            return
         inst, strings = samples.strung("melody", self.voice("melody"))
         k, _ = self.pick_string(note, strings)
         p1 = inst + (k + 1) / 10  # held per string: a new note on it replaces, or ties to, the last
@@ -832,6 +917,46 @@ class Conductor:
                 self.engine.note(at, -p1, 0)
             slide_in = rng.choice([1, 2]) if length_s >= 0.2 and rng.random() < SLIDE_IN else 0
             self.engine.note(at, p1, -1, self.hz(note), amp, LEVEL["melody"], slide_in, SLIDE_S * slide_in)
+            self.held[k] = (note, at)
+        self.emit(at, "melody", dur=round(length_s, 3), **self.pitch_of(note))
+
+    def play_strung_as(self, at: float, note: int, length_s: float, amp: float, how: str) -> None:
+        """A note of the Tune line's on a string: slid from the note the string holds (slide, up to SLIDE_MAX
+        semitones), hammered on or pulled off from it (no pick: HAMMER_S to the new pitch), picked below and slid up
+        (slide-in:N), a double stop's added note (on another string, the bar and the string played left where they
+        are), or picked. A slide, hammer or pull with no note held on a string it can reach is picked."""
+        inst, strings = samples.strung("melody", self.voice("melody"))
+        legato = how in ("slide", "hammer", "pull")
+        k = None
+        if legato and self.last_string is not None:  # on the string just played, if it reaches
+            fret = note - strings[self.last_string]
+            held = self.held.get(self.last_string)
+            if 0 <= fret <= 15 and held is not None and at - held[1] < samples.RING_S - 0.2 \
+                    and 0 < abs(note - held[0]) <= (SLIDE_MAX if how == "slide" else 4):
+                k = self.last_string
+                if fret:
+                    self.bar_pos = fret
+        if how == "double":
+            keep = (self.bar_pos, self.last_string)
+            near = [i for i in range(len(strings)) if i != self.last_string and 0 <= note - strings[i] <= 15]
+            k = min(near, key=lambda i: abs(note - strings[i] - self.bar_pos)) if near else \
+                self.pick_string(note, strings)[0]
+            self.bar_pos, self.last_string = keep
+        elif k is None:
+            k, _ = self.pick_string(note, strings)
+        p1 = inst + (k + 1) / 10
+        held = self.held.get(k)
+        live = held is not None and at - held[1] < samples.RING_S - 0.2
+        if legato and live and held[0] != note and k == self.last_string:
+            glide = SLIDE_S * abs(note - held[0]) if how == "slide" else HAMMER_S
+            start = max(held[1] + 0.03, at - glide)
+            self.engine.note(start, p1, -1, self.hz(note), amp, LEVEL["melody"], 0, at - start)
+            self.held[k] = (note, held[1])
+        else:
+            if live:
+                self.engine.note(at, -p1, 0)
+            bend = int(how.split(":")[1]) if how.startswith("slide-in") and ":" in how else 0
+            self.engine.note(at, p1, -1, self.hz(note), amp, LEVEL["melody"], bend, SLIDE_S * bend)
             self.held[k] = (note, at)
         self.emit(at, "melody", dur=round(length_s, 3), **self.pitch_of(note))
 
