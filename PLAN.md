@@ -735,8 +735,8 @@ the echo estimate"; `docs/band-that-follows.md`, the same title); here, the band
 The player, on the band's challenge: "The band needs to keep a pretty steady tempo with all changes as gradual as
 possible while still keeping aligned with the downbeats I play." The clock is the transcription project's
 (`livebeat.LiveBeatParams.steady_bars`, `onset_lead_s`; its `docs/band-that-follows.md` and `docs/findings.md`, "A
-steady band clock", have the design and the numbers); here, the settings that reach it. Both off until the player has
-chosen by ear.
+steady band clock", have the design and the numbers); here, the settings that reach it. Off until the player had
+chosen by ear; on by default since 2026-10-21 (below).
 
 - **The steady clock** (`Settings.steady`, bars; None the band's clock as before): the band's phase comes to the
   player's beats over about that many bars, its tempo over one, the chase opening both for a quick lasting change.
@@ -757,6 +757,17 @@ chosen by ear.
   steps re-cut (hold, the steady clock at the chosen width, beat-by-beat lead). `tests/test_ud.py`: off unless asked,
   passed when asked, the onset lead only where one is measured, widths out of range refused.
 - Not deployed. Needs the transcription project's matching commit.
+- **On by default, 2026-10-21: steady over half a bar with the onset lead** (`config.STEADY_BARS` 0.5, `ONSET_LEAD`;
+  a config's `steady_bars = "off"` or a start's `steady: "off"` turns it off). The player heard the live clock beside
+  the hindsight line in two reviews (the transcription project's `2026-10-20-band-clock` and `-live`; its findings,
+  "The live clock by ear") and then said to settle it from those answers: "do what you can with info you already
+  have". Half a bar is the only live setting never heard as throwing them off, and the steadiest on Red Wing's entrance
+  ("Pocket is better here"); a bar threw them off twice, 2 bars once ("lots of tension"). No device, Red Wing's take,
+  30 s: every cue on time at the default (135, none late or dropped, margins 14-33 ms), the band's tempo moving a
+  median 0.30% every 4 beats against 0.35% off (90th percentile 0.60% against 0.91%), the bass on the chart's root
+  95.6% of beats against 91.1%; the listening's CPU within the run-to-run spread (157-255 ms a second against
+  205-225). `tests/test_ud.py`: on by default in every config, "off" in a config or a start, a start's own width
+  passed. Still not on the page: the default does it.
 
 ### Band sounds: a plan (2026-10-17)
 

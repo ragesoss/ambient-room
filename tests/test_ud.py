@@ -327,22 +327,27 @@ def test_the_beat_params_carry_lead_or_follow_only_when_not_the_default():
 
 
 @needs_band
-def test_the_steady_clock_and_the_onset_lead_are_off_unless_asked():
-    """The steady band clock and the onset lead: off in the config and the start request unless named, then passed to
-    the follower (the onset lead only where the transcription project has measured one: the bass); a width out of
-    range refused."""
+def test_the_steady_clock_and_the_onset_lead_by_default(tmp_path):
+    """The steady band clock over half a bar and the onset lead: on in the config unless it says otherwise (the
+    player's choice by ear, 2026-10-21: `config.STEADY_BARS`, `ONSET_LEAD`), "off" turning the clock off in a config
+    or a start request; a start's own width passed to the follower (the onset lead only where the transcription
+    project has measured one: the bass); a width out of range refused."""
     from dataclasses import replace
 
     from fastapi.testclient import TestClient
     from transcribe.livebeat import ONSET_LEAD_S, PRESETS
-    from ugly_duckling.config import steady_entry
+    from ugly_duckling.config import ONSET_LEAD, STEADY_BARS, steady_entry
     from ugly_duckling.server import Band, create_app
     from ugly_duckling.session import Session, Settings
     cfg = load_config(DESKTOP)
-    assert cfg.steady_bars is None and cfg.onset_lead is False
+    assert (STEADY_BARS, ONSET_LEAD) == (0.5, True)
+    assert cfg.steady_bars == 0.5 and cfg.onset_lead is True
     for name in ("ud-pi.toml", "ud-desktop.toml"):
         c = load_config(REPO / "config" / name)
-        assert c.steady_bars is None and c.onset_lead is False, name
+        assert c.steady_bars == 0.5 and c.onset_lead is True, name
+    off = tmp_path / "off.toml"
+    off.write_text(DESKTOP.read_text().replace("[band]\n", '[band]\nsteady_bars = "off"\nonset_lead = false\n', 1))
+    assert (load_config(off).steady_bars, load_config(off).onset_lead) == (None, False)
     assert steady_entry("x", None) is None and steady_entry("x", "off") is None and steady_entry("x", 2) == 2.0
     b = Band(cfg)
     tune, inp = b.tunes["red-wing"], b.inputs["take"]
@@ -357,11 +362,12 @@ def test_the_steady_clock_and_the_onset_lead_are_off_unless_asked():
     assert dobro._beat_params() == replace(PRESETS["dobro"], stop_beats=cfg.stop_beats,
                                            noise_gate_db=cfg.noise_gate_db)  # none measured for the dobro
     with TestClient(create_app(cfg)) as c:
-        assert c.get("/api/options").json()["steady"] == {"default": None, "onset_lead": False}
+        assert c.get("/api/options").json()["steady"] == {"default": 0.5, "onset_lead": True}
         for bad in ({"steady": 0.1}, {"steady": 40}, {"steady": "wide"}, {"onset_lead": "yes"}):
             r = c.post("/api/start", json={"tune": "red-wing", "listen_stop": False} | bad)
             assert r.status_code == 400, bad
-        for given, want in (({}, (None, False)), ({"steady": 2}, (2.0, False)), ({"steady": "off"}, (None, False)),
+        for given, want in (({}, (0.5, True)), ({"steady": 2}, (2.0, True)), ({"steady": "off"}, (None, True)),
+                            ({"steady": "off", "onset_lead": False}, (None, False)), ({"onset_lead": False}, (0.5, False)),
                             ({"steady": 1, "onset_lead": True}, (1.0, True))):
             r = c.post("/api/start", json={"tune": "red-wing", "listen_stop": False} | given)
             assert r.status_code == 200, r.text

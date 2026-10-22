@@ -108,9 +108,9 @@ class Config:
     pocket_parts: dict = field(default_factory=dict)
     pocket_seed: int = pockets.SEED
     # the steady band clock (the transcription project's `livebeat` `steady_bars`): the width in bars a start gets
-    # unless it names another (the start request's `steady`); None: the band's clock as before. And the band's beats
+    # unless it names another (the start request's `steady`; "off": the band's clock as before). And the band's beats
     # on the player's attacks rather than on their onset function's peaks (`livebeat.ONSET_LEAD_S`, the bass's 20 ms;
-    # the start request's `onset_lead`). Both off until the player has chosen them by ear
+    # the start request's `onset_lead`). On by default since 2026-10-21 (`STEADY_BARS`, `ONSET_LEAD`)
     steady_bars: float | None = None
     onset_lead: bool = False
     record: RecordConfig = field(default_factory=RecordConfig)
@@ -142,6 +142,16 @@ def pocket_entry(path: Path, raw) -> tuple[str, dict, int]:
 
 
 STEADY_RANGE = (0.25, 16.0)  # bars
+# The band's clock by default (a config's [band] steady_bars and onset_lead name others; "off" the clock as before):
+# steady over half a bar with the onset lead, as the live clock was heard in the transcription project's reviews
+# (2026-10-20-band-clock and -live; its findings, "The live clock by ear"). Of the live settings, the only one the
+# player never found would throw them off, the steadiest on Red Wing's entrance ("Pocket is better here"); on the
+# 2026-10-18 entrances a median 11 ms off the player's downbeats against You lead's 7 and 9, its tempo moving a third
+# as much a beat (0.46% against 1.39%, 0.77% against 2.18%). Wider, it stays on one side of a player who speeds up
+# or slows down (2 bars: 53 ms ahead on Red Wing, "lots of tension"); the player then said to settle it from these
+# answers (2026-10-21: "do what you can with info you already have").
+STEADY_BARS = 0.5
+ONSET_LEAD = True
 
 
 def steady_entry(where, raw) -> float | None:
@@ -198,7 +208,7 @@ def load_config(path: Path | None = None) -> Config:
         stop_beats=int(band.get("stop_beats", 5)),
         noise_gate_db=float(band.get("noise_gate_db", 6.0)),
         pocket=pocket, pocket_parts=pocket_parts, pocket_seed=pocket_seed,
-        steady_bars=steady_entry(path, band.get("steady_bars")),
-        onset_lead=bool(band.get("onset_lead", False)),
+        steady_bars=steady_entry(path, band.get("steady_bars", STEADY_BARS)),
+        onset_lead=bool(band.get("onset_lead", ONSET_LEAD)),
         record=RecordConfig(**{k: v for k, v in raw.get("record", {}).items()}),
     )
