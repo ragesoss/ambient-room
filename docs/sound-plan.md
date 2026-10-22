@@ -368,7 +368,7 @@ Each step ends with A/B renders for the player.
    guitar, banjo, mandolin, fiddle, as presets of their own.
 8. **Publishing 1.0** of each font the player is happy with: generic names
    (below, "Names"), the extracted samples (FLAC) beside the SF2 and SF3,
-   a README with the instrument, the chain and the licence.
+   the curated whole takes, a README with the instrument, the chain and the licence.
 
 The player (2026-10-22), on the published fonts: "i want to build the dobro
 font from my samples, but i think most others will be better done with
@@ -393,8 +393,9 @@ contributor's takes serve twice.
   - their whole upload, the takes and the samples cut from them, under the
     fonts' licence, CC0 (below), which cannot be withdrawn once published
     (the player, 2026-10-22: "i want to get CC0 permission for the entire
-    upload"); whether full takes go out with a release is decided at that
-    release;
+    upload"); the takes go out with a release too once curated: trimmed of
+    any voice or identifiable background sound, and of a consistent high
+    quality as whole takes (the player, 2026-10-22);
   - whether and how they are credited (a name, a handle, or none).
   They also confirm the playing and the recording are their own, and that
   nothing comes from a sample library or a record.
