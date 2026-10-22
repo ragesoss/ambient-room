@@ -409,9 +409,10 @@ contributor's takes serve twice.
 ## Licensing
 
 - **The project's own fonts** (from the player's and contributors'
-  recordings): one stated open licence, chosen before the first contributor
-  uploads. The usual choices are CC-BY 4.0 (credit required) and CC0 (none)
-  (question 1). The build scripts keep the code's own licence.
+  recordings): CC0 (question 1, decided 2026-10-22; the player: "let's go
+  with CC0"; dobro-transcription's card `fonts-release-decisions`), stated
+  before the first contributor uploads. The build scripts keep the code's own
+  licence.
 - **Fonts built from others keep their terms,** and stay in files of their
   own, not merged into ours:
   - GeneralUser GS (the guitar and banjo now): free use and modification,
@@ -449,8 +450,8 @@ contributor's takes serve twice.
 
 ## Open questions for the player
 
-1. **The fonts' licence:** CC-BY 4.0 or CC0? The same for every instrument
-   and for contributors' samples?
+1. **The fonts' licence:** CC0 (decided 2026-10-22). Still open: the same for
+   every instrument and for contributors' samples?
 2. **Which instruments are at hand:** which banjo, a mandolin, a fiddle?
    Who would play the fiddle, if anyone here?
 3. **Strings:** restring the D-1 and the Beard before sampling, or sample
