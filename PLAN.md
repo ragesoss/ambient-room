@@ -916,6 +916,22 @@ them".
   written over the mood. The suite 118 passed, 1 skipped (no ctcsound under Miniconda; FluidSynth loadable); under the
   venv the engine's, the conductor's, the server's and the breaks' tests 79 passed. Not deployed.
 
+### A pick on a string never lost (2026-10-22)
+
+Found in Cherokee Shuffle's renders (above): a pick on a dobro string 3.8 to 4.0 s after that string's last pick was
+tied by Csound into the note still sounding there, with no attack, and stopped with it at `samples.RING_S` (4 s).
+Now a pick stops the string's note whenever it may still sound, up to 4.5 s after it (`conductor.stop_string`,
+`STOP_MARGIN_S` 0.5 s: room for a note that started late), in the Tune line (`play_strung_as`) and the Phrases line
+(`play_strung`). A stop for a note already ended does nothing; Csound says it found none.
+
+- Over the review's seven clips a tune (pulls 1, 0.75, 0.25 and 0, and 0.5 three times), the picks lost: Red Wing
+  7 to 0, Big Sciota 8 to 0, Cherokee Shuffle 10 to 0. The band and every note the same, before and after, in each
+  tune at pulls 1, 0.5 and 0; only the stops added (2 or 3 a run).
+- Heard: Cherokee as written, bar 6's C♯4 (beat 2, held three beats) now sounds, 2.7 dB more over those 0.4 s.
+  For the player's ear before it goes on: the Cherokee clips, today's against this.
+- `tests/test_breaks.py` (18): a pick 2, 3.9 and 4.2 s after the last on its string stops it, 5 s after does not, in
+  both lines. The suite 119 passed, 1 skipped; under the venv 80 passed. Not deployed.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.

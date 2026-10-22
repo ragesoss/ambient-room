@@ -47,6 +47,12 @@ SLIDE, SLIDE_IN, SLIDE_S = 0.3, 0.1, 0.08
 # SLIDE_MAX semitones), hammered on or pulled off (sounded from it with no pick, HAMMER_S), slid into from below, or
 # picked; no habits of the hand's. A struck voice takes a slide into a note as a grace note GRACE_S before it.
 SLIDE_MAX, HAMMER_S, GRACE_S = 5, 0.012, 0.06
+# A string's note is held until the string is picked again, or until samples.RING_S, when its Csound note ends itself.
+# A pick on the string stops that note first whenever it may still sound (up to RING_S and STOP_MARGIN_S over, the
+# margin for a note that started late): Csound ties a note with the same p1 into one still held, so a pick 3.8-4.0 s
+# after the string's last (past where a slide still starts from it, before the note ended) was tied into the dying
+# note, with no attack, and cut with it (2026-10-22: 4 of Cherokee Shuffle's 101 picks as written).
+STOP_MARGIN_S = 0.5
 
 # Guitar voices play their chords' patterns as guitar chords (music.guitar_shape): the bass on its
 # own string, then the other strings strummed (STRUM_S apart, down low to high), damped short for a
@@ -913,12 +919,17 @@ class Conductor:
             self.engine.note(start, p1, -1, self.hz(note), amp, LEVEL["melody"], 0, at - start)
             self.held[k] = (note, held[1])
         else:
-            if live:
-                self.engine.note(at, -p1, 0)
+            self.stop_string(at, p1, held)
             slide_in = rng.choice([1, 2]) if length_s >= 0.2 and rng.random() < SLIDE_IN else 0
             self.engine.note(at, p1, -1, self.hz(note), amp, LEVEL["melody"], slide_in, SLIDE_S * slide_in)
             self.held[k] = (note, at)
         self.emit(at, "melody", dur=round(length_s, 3), **self.pitch_of(note))
+
+    def stop_string(self, at: float, p1: float, held: tuple | None) -> None:
+        """Before a pick on a string: stop the note it holds if that may still sound (else Csound ties the pick into
+        it). A stop for a note that has already ended does nothing (Csound says it found none)."""
+        if held is not None and at - held[1] < samples.RING_S + STOP_MARGIN_S:
+            self.engine.note(at, -p1, 0)
 
     def play_strung_as(self, at: float, note: int, length_s: float, amp: float, how: str) -> None:
         """A note of the Tune line's on a string: slid from the note the string holds (slide, up to SLIDE_MAX
@@ -953,8 +964,7 @@ class Conductor:
             self.engine.note(start, p1, -1, self.hz(note), amp, LEVEL["melody"], 0, at - start)
             self.held[k] = (note, held[1])
         else:
-            if live:
-                self.engine.note(at, -p1, 0)
+            self.stop_string(at, p1, held)
             bend = int(how.split(":")[1]) if how.startswith("slide-in") and ":" in how else 0
             self.engine.note(at, p1, -1, self.hz(note), amp, LEVEL["melody"], bend, SLIDE_S * bend)
             self.held[k] = (note, at)

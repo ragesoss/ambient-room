@@ -275,3 +275,24 @@ def test_the_tune_line_plays_cherokee_shuffle():
     c, _ = _play(s, 7, 3, seconds=36 * 4 * 60 / 170 + 3)
     assert c.breaker is not None and c.breaker.k == 2 and c.breaker.shift == 0
     assert [n for p, n in c.breaker.heard if p == 0] == tune.notes  # as written, the first time round
+
+
+def test_a_pick_stops_the_strings_note_while_it_may_sound(monkeypatch):
+    """A pick on a string stops the note it holds until that note has surely ended (samples.RING_S, and a margin):
+    without the stop, Csound ties the pick into a note still sounding, 3.8-4.0 s after it was picked, and it is lost."""
+    from ambient import conductor as cmod
+    monkeypatch.setattr(cmod.samples, "strung", lambda layer, voice: (406, (62, 59, 55, 50, 47, 43)))
+    for gap, stopped in ((2.0, True), (3.9, True), (4.2, True), (5.0, False)):
+        for tune_line in (True, False):
+            clock = Clock()
+            c = Conductor(clock, random.Random(1))
+            c.apply(merge(DEFAULT, {}))
+            for at in (10.0, 10.0 + gap):
+                if tune_line:
+                    c.play_strung_as(at, 61, 1.0, 0.1, "pick")
+                else:
+                    c.play_strung(at, 61, 1.0, 0.1)
+            on = [n for n in clock.notes if int(n[1]) == 406]
+            assert len(on) == 2 and on[0][1] == on[1][1]  # the same string
+            offs = [n for n in clock.notes if n[1] == -on[0][1] and abs(n[0] - 10.0 - gap) < 1e-9]
+            assert bool(offs) == stopped, (gap, tune_line)
