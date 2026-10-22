@@ -1,11 +1,17 @@
 #!/bin/sh
-# Copy this tree to the Pi and run its installer.
+# Copy this tree to the Pi and run its installer, and the dobro tunes' answer keys the Tune line plays
+# (ambient/breaks.py: tunes/dobro/<tune>/<tune>.musicxml) into the transcription project's copy there.
 #   tools/deploy [HOST]     HOST: an ssh host (default: practice)
+#   TRANSCRIBE=~/play/dobro-transcription (the default) is the transcription project here; on HOST it is
+#   ~/dobro-transcription.
 set -eu
 host=${1:-practice}
 here=$(cd "$(dirname "$0")/.." && pwd)
+tp=${TRANSCRIBE:-$HOME/play/dobro-transcription}
 rsync -a --delete \
     --exclude .venv --exclude __pycache__ --exclude .pytest_cache \
     --exclude .git --exclude 'state-*.json' --exclude /renders --exclude /local \
     "$here/" "$host:ambient-room/"
+(cd "$tp" && for d in tunes/dobro/*/; do n=$(basename "$d"); if [ -f "$d$n.musicxml" ]; then echo "$d$n.musicxml"; fi; done) | \
+    rsync -a --files-from=- "$tp/" "$host:dobro-transcription/"
 ssh "$host" ambient-room/setup/install.sh
