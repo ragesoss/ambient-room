@@ -37,6 +37,7 @@ What happens in between (in a thread of its own; the device and the band's sound
 from __future__ import annotations
 
 import os
+import random
 import subprocess
 import threading
 import time
@@ -66,6 +67,11 @@ ROOM_PEAK_RATIO = 8.0  # its peak this many times the response's median magnitud
 ROOM_MIN_REMOVED_DB = 1.0  # ... and this much of the input removed over the last 2 s, or it is marked unreliable
 PARTS = ("bass", "chop", "comp")
 PART_NAMES = {"bass": "Bass", "chop": "Chop", "comp": "Chords"}
+# The members' breaks (the transcription project's `transcribe.bandbreaks`, 2026-10-22): each pass of the form a
+# member takes a break on the tune's melody, in this order (the player's), leaving its rhythm part for it (the guitar
+# the chords, the mandolin the chop). Off by default.
+MEMBERS = ("dobro", "fiddle", "guitar", "mandolin", "banjo")
+MEMBER_NAMES = {"dobro": "Dobro", "fiddle": "Fiddle", "guitar": "Guitar", "mandolin": "Mandolin", "banjo": "Banjo"}
 # Lead or follow: how much of the player's tempo the band's clock takes (the transcription project's
 # `livebeat.LiveBeatParams.follow`; its `docs/band-that-follows.md`, "Lead or follow"). "lead" is the band as before.
 FOLLOW_STEPS = (
@@ -107,6 +113,9 @@ class Settings:
     # the band's beats on the player's attacks, not on their onset function's peaks (`livebeat.ONSET_LEAD_S`: the
     # bass's 20 ms); False: as before
     onset_lead: bool = False
+    # the members' breaks in turn (`MEMBERS`), on a tune with a melody (`tunes.melody_for`); False: the band as before
+    breaks: bool = False
+    break_members: list = field(default_factory=lambda: list(MEMBERS))
 
 
 def count_in_plan(cfg: Config, bpm: float, beats_per_bar: int, count: str = "band", bars: str = "auto") -> dict:
@@ -138,8 +147,9 @@ def set_controls(card: str, controls: list[dict]) -> list[str]:
 
 
 def engine_spec(cfg: Config, inp: Input | None, voicing, ring: duplex.Ring, audio: str | None = None,
-                file_channel: int | None = None, bar1_s: float = 0.0) -> EngineSpec:
-    """The band engine on the config's device, both ways (`duplex.py`)."""
+                file_channel: int | None = None, bar1_s: float = 0.0, members=()) -> EngineSpec:
+    """The band engine on the config's device, both ways (`duplex.py`); `members`: the members whose breaks may play,
+    each a voice of its own (none: the band's parts alone, as before)."""
     d = cfg.device
     period = max(1, int(round(d.period_ms * RATE / 1000)))
     buffer = max(period, int(round(d.buffer_ms * RATE / 1000)))
@@ -156,11 +166,13 @@ def engine_spec(cfg: Config, inp: Input | None, voicing, ring: duplex.Ring, audi
     else:
         raise ValueError(f"no device kind {d.kind!r}: alsa or file")
     fonts = tuple(cfg.sounds_dir / f for f in voicing.FONTS)
-    missing = [str(f) for f in fonts if not f.is_file()]
+    missing = [str(f) for f in fonts + tuple(cfg.sounds_dir / f for f in bandplayer.break_fonts(voicing, members))
+               if not f.is_file()]
     if missing:
         raise Busy(f"the band's sounds are missing: {', '.join(missing)}")
-    return EngineSpec(fonts, bandplayer.voices(voicing), "duplex", "", d.buffer_ms, d.period_ms, None, d.block, RATE,
-                      0.0, cfg.rt_priority, False, factory, cfg.max_volume_db, cfg.ceiling_db, 2000)
+    return EngineSpec(fonts, bandplayer.voices(voicing, members=members, sounds_dir=cfg.sounds_dir), "duplex", "",
+                      d.buffer_ms, d.period_ms, None, d.block, RATE, 0.0, cfg.rt_priority, False, factory,
+                      cfg.max_volume_db, cfg.ceiling_db, 2000)
 
 
 def db(x: float) -> float | None:
@@ -220,6 +232,29 @@ class Session:
         self._ring_lock = threading.Lock()
         self.room: dict | None = None  # the learnt echo path's delay (`_room_delay`)
         self.next_room = int(ROOM_EVERY_S * RATE)
+        self.breaks = self._breaks()  # the members' breaks for the band (`transcribe.bandbreaks.Breaks`), or None
+
+    def _breaks(self):
+        """The members' breaks, when on and the tune has a melody (`tunes.melody_for`; with no tune chosen, those of
+        the tunes that have one): the members chosen in the rotation's order, the rotation's own dice (logged at
+        the start). None: the band as before."""
+        s = self.s
+        members = tuple(m for m in MEMBERS if m in (s.break_members or ()))
+        if not s.breaks or not members or not hasattr(self.voicing, "BREAK_VOICE"):
+            return None
+        from transcribe.bandbreaks import Breaks
+
+        from .tunes import melody_for
+        seed = random.getrandbits(32)
+        if self.catalog is not None:
+            mel = {t.id: m for t in self.catalog if (m := melody_for(t)) is not None}
+            return Breaks(members, melodies=mel, seed=seed) if mel else None
+        m = melody_for(self.tune)
+        return Breaks(members, melody=m, seed=seed) if m is not None else None
+
+    def break_members(self) -> tuple:
+        """The members whose breaks may play in this run (their voices made in the engine)."""
+        return tuple(self.breaks.members) if self.breaks is not None else ()
 
     # ------------------------------------------------------------------------------------------- outside
 
@@ -240,7 +275,8 @@ class Session:
         self._start_record()
         self.ring = duplex.Ring(int(RING_S * RATE))
         try:
-            spec = engine_spec(cfg, self.inp, self.voicing, self.ring, audio, ch, getattr(self, "_file_bar1", 0.0))
+            spec = engine_spec(cfg, self.inp, self.voicing, self.ring, audio, ch, getattr(self, "_file_bar1", 0.0),
+                               self.break_members())
             self.engine = EngineProcess(spec)
             self.engine.start()
         except Exception as e:
@@ -294,6 +330,10 @@ class Session:
                            "two_bar_bpm": c.two_bar_bpm, "click_db": c.click_db,
                            "transcribe": c.transcribe, "config": str(c.path)},
                      pocket=self.pocket.describe(),
+                     breaks=None if self.breaks is None else {
+                         "members": list(self.breaks.members), "seed": self.breaks.seed,
+                         "melody": [self.breaks.melody.name] if self.breaks.melody is not None
+                         else sorted(self.breaks.melodies)},
                      capture_channels=["input", "loopback", "input less the band", "room mic",
                                        "the band as the beat follower was given it"], rate=RATE,
                      pruned=getattr(self.rec, "pruned", []))
@@ -375,7 +415,7 @@ class Session:
         p = VoiceCountParams(beats_per_bar=self.tune.beats_per_bar, lead_s=self.cfg.lead_s)
         self.band = VoiceBand(RATE, words=self.words, params=p, chart=self.tune.chart or None, start=0,
                               instrument=self.s.instrument, lead_s=self.cfg.lead_s, beat_params=self._beat_params(),
-                              tunes=self._band_tunes())
+                              tunes=self._band_tunes(), **self._breaks_kw())
         self.words = None  # the VoiceBand pushes its own words
         self.state = "listening for your count"
         if self.cfg.device.kind == "file":
@@ -404,7 +444,7 @@ class Session:
         self.band = LiveBand(RATE, self.s.bpm, self.tune.chart or None, self.tune.beats_per_bar,
                              count_in=self.count_in, start=0, instrument=self.s.instrument, lead_s=self.cfg.lead_s,
                              play_from=self.count_in[-1] + 0.5 * spb, beat_params=self._beat_params(),
-                             tunes=self._band_tunes())
+                             tunes=self._band_tunes(), **self._breaks_kw())
         if self.rec:
             self.rec.log("clock", L_estimate=self.L_est_ref, L_measured=self.L_measured, L=self.L, conv=self.conv,
                          count_in=self.count_in)
@@ -436,6 +476,10 @@ class Session:
             return None
         from transcribe.band import Tune as BandTune
         return [BandTune(t.id, t.name, tuple(tuple(c) for c in t.chart), t.beats_per_bar) for t in self.catalog]
+
+    def _breaks_kw(self) -> dict:
+        """The band's `breaks` argument when the members' breaks are on (none: the band made as before)."""
+        return {"breaks": self.breaks} if self.breaks is not None else {}
 
     def _listen(self) -> None:
         ring, h, blk = self.ring, self.ring.header, self.cfg.in_block
@@ -603,15 +647,19 @@ class Session:
                 self._cues([e])
 
     def _cues(self, cues) -> None:
+        members = self.break_members()
         for c in cues:  # in the stream's seconds (a VoiceBand's already shifted by its origin)
-            if self.rec:  # `t` the band's; the pocket moves its notes by `pocket_ms`
+            on = bool(self.s.parts.get(c.part, False)) and c.part in PARTS or c.part in members
+            if self.rec:  # `t` the band's; the pocket moves its notes by `pocket_ms`; a member's break, its notes
+                notes = getattr(c.play, "notes", ())
                 self.rec.log("cue", i=c.i, part=c.part, chord=c.play.chord, tone=c.play.tone, muted=c.play.muted,
                              t=c.t, beat_t=c.beat_t, decided_at=c.decided_at, bar=c.bar,
-                             on=bool(self.s.parts.get(c.part, False)), heard_to=self.read / RATE,
+                             on=on, heard_to=self.read / RATE,
                              pocket_ms=round(self.pocket.shift_ms(
-                                 c.part, pockets.note_class(c.t, c.beat_t, self.player.spb), c.i), 3))
+                                 c.part, pockets.note_class(c.t, c.beat_t, self.player.spb), c.i), 3),
+                             **({"notes": [list(x) for x in notes]} if notes else {}))
             self.last_cue[c.part] = c
-            if self.s.parts.get(c.part, False) and c.part in PARTS:
+            if on:
                 self.player.cue(c)
                 self.last_sounded = time.monotonic()
 
@@ -703,6 +751,7 @@ class Session:
             playing = bool(c is not None and beat is not None and c.i >= beat["i"] - 1)
             parts[p] = {"name": PART_NAMES[p], "on": bool(self.s.parts.get(p)), "playing": playing}
         out["parts"] = parts
+        out["breaks"] = self.breaks_status(band)
         lv = max(self.level) if self.level else 0.0
         out["input_db"] = db(lv)
         if self.count is not None:
@@ -715,6 +764,19 @@ class Session:
         out["recording"] = ({"on": True, "folder": self.rec.path.name, "minutes": round(self.rec.frames / RATE / 60, 1)}
                             if self.rec and self.rec.on else {"on": False, "why": self.rec.why if self.rec else ""})
         return out
+
+    def breaks_status(self, band) -> dict:
+        """The members' breaks: on or not, who rotates, the member breaking now and the one planned next (names)."""
+        if self.breaks is None:
+            return {"on": False}
+        rot = getattr(getattr(band, "band", None), "rotation", None)
+        now = nxt = None
+        if rot is not None:
+            if rot.cur is not None and rot.cur.phase in ("pass", "out"):
+                now = MEMBER_NAMES.get(rot.cur.member, rot.cur.member)
+            if rot.nxt is not None and rot.nxt.phase != "done":
+                nxt = MEMBER_NAMES.get(rot.nxt.member, rot.nxt.member)
+        return {"on": True, "members": [MEMBER_NAMES.get(m, m) for m in self.breaks.members], "now": now, "next": nxt}
 
     def found_status(self, band) -> dict:
         """No tune chosen: the tune whose chart the band follows (None while it listens), and the one the matcher

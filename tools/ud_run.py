@@ -5,11 +5,13 @@ whole loop runs and nothing is heard.
 
     tools/ud_run.py [--config config/ud-desktop.toml] [--tune red-wing] [--bpm N] [--seconds 30] [--count band|voice]
         [--input ID] [--instrument dobro] [--follow hold|gentle|lead|0-1] [--pocket pushed|even|none]
-        [--steady BARS|off] [--onset-lead] [--json OUT]
+        [--steady BARS|off] [--onset-lead] [--breaks all|dobro,fiddle,...] [--json OUT]
 
 Each second: the state, the beat and chord, the parts; at the end: the clock (L estimated and measured), every
 cue's margin when it reached the engine (min, median), late and dropped notes, underruns, the listening's and the
-engine's CPU (ms a second), and, against the tune's chart, how often each part played the chart's chord.
+engine's CPU (ms a second), and, against the tune's chart, how often each part played the chart's chord. With
+`--breaks`, the members' breaks on (the transcription project's `bandbreaks`): who broke, from which beat to which,
+and their notes in the engine.
 """
 
 from __future__ import annotations
@@ -79,6 +81,20 @@ def first_notes(sess) -> dict:
     return out
 
 
+def breaks(sess) -> dict | None:
+    """The members' breaks: each turn (member, its pull, the beats it was planned, began and ended on, lost), and each
+    member's notes in the engine (on time, late, dropped)."""
+    band = sess.band if not hasattr(sess.band, "bands") else sess.band.band
+    rot = getattr(getattr(band, "band", None), "rotation", None)
+    if rot is None:
+        return None
+    turns = rot.done + [t for t in (rot.cur, rot.nxt) if t is not None]
+    counts = (sess.final or {}).get("counts") or {}
+    return {"turns": [{"member": t.member, "pull": round(t.pull, 3), "armed": t.armed_at, "began": t.began_at,
+                       "ended": t.ended_at, "lost": t.lost_at, "phase": t.phase} for t in turns],
+            "notes": {m: counts.get(m) for m in sess.break_members()}}
+
+
 def drift(sess, every: int = 4) -> list:
     """The band's beats against the count-in's grid (the clicks' tempo, on from the beat after them): (beat, ms after
     its grid time, bpm, confidence), every `every` beats, and the last."""
@@ -118,6 +134,7 @@ def main() -> None:
                     "config's)")
     ap.add_argument("--onset-lead", action="store_true", help="the band's beats on the player's attacks, not on "
                     "their onset function's peaks (the bass's 20 ms)")
+    ap.add_argument("--breaks", default=None, help="the members' breaks on: all, or members by name (dobro,fiddle,...)")
     ap.add_argument("--json", default=None)
     ap.add_argument("--logs", type=int, default=0, help="print the band's first N beats' logs")
     a = ap.parse_args()
@@ -139,6 +156,10 @@ def main() -> None:
         body["steady"] = a.steady
     if a.onset_lead:
         body["onset_lead"] = True
+    if a.breaks:
+        from ugly_duckling.session import MEMBERS
+        body["breaks"] = True
+        body["break_members"] = list(MEMBERS) if a.breaks == "all" else a.breaks.split(",")
     band.start(body)
     sess = band.session
     t0 = time.monotonic()
@@ -160,7 +181,7 @@ def main() -> None:
               "recording": str(sess.rec.path) if sess.rec and sess.rec.on else None,
               "L_estimate_frames": sess.L_est_ref, "L_frames": sess.L, "L_measured": sess.L_measured,
               "count_in": [round(t, 4) for t in sess.count_in], "timing": timing, "final": sess.final,
-              "grade": grade(sess), "first_notes": first_notes(sess), "drift": drift(sess)}
+              "grade": grade(sess), "first_notes": first_notes(sess), "drift": drift(sess), "breaks": breaks(sess)}
     print(json.dumps(report, indent=1, default=str))
     lb = sess.band if not hasattr(sess.band, "bands") else sess.band.band
     for lg in (lb.logs[: a.logs] if lb is not None else []):

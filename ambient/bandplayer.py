@@ -43,11 +43,19 @@ from .pocket import Pocket
 # sounds laid back; a chop late on the "and" smears the off-beat, so it may be later only by less. First settings
 # (2026-10-16), under the 25-40 ms an ensemble tolerates (the accompaniment survey, in the transcription project).
 LATE_S = {"bass": 0.030, "comp": 0.030, "chop": 0.015}
+# a member's break (2026-10-22): a beat's notes a group, late by as much as the bass (a line, not an off-beat)
+BREAK_LATE_S = 0.030
 
 # Each part's level on its own FluidSynth (dB), so the parts sit as the offline render sets them by loudness (the
 # bass, the chords 3 dB under it, the chop 5 dB under), measured on the harness takes' renders
 # (`tools/band_replay.py levels`, 2026-10-16). Set in `voices()`.
 PART_GAIN_DB: dict[str, float] = {"bass": 0.0, "comp": -8.3, "chop": -9.5}
+# The members' breaks (2026-10-22): each 2 dB over the bass by loudness (the transcription project's
+# `bandvoice.BREAK_VOICE`), measured as the parts' were: each member's gain against the bass's in that project's
+# offline render of the breaks over Red Wing and Cherokee Shuffle (`tools/band_breaks.py render`, `breaks.json`'s
+# `member_gain_db_over_bass`: the dobro +1.8 and +2.3, the fiddle -5.4 and -4.2, the guitar +0.7 and +1.3, the mandolin
+# +0.1 and +0.6, the banjo -1.1 and -1.4), the mean of the two.
+BREAK_GAIN_DB: dict[str, float] = {"dobro": 2.0, "fiddle": -4.8, "guitar": 1.0, "mandolin": 0.4, "banjo": -1.2}
 
 
 def load_voicing(src: str | Path):
@@ -59,10 +67,26 @@ def load_voicing(src: str | Path):
     return bandvoice
 
 
-def voices(bandvoice, gain_db: dict[str, float] | None = None) -> dict[str, Voice]:
-    """The engine's voices from the voicing's (channel, program, pan, loudness offset) and the parts' gains."""
+def voices(bandvoice, gain_db: dict[str, float] | None = None, members=(), sounds_dir=None) -> dict[str, Voice]:
+    """The engine's voices from the voicing's (channel, program, pan, loudness offset) and the parts' gains; and for
+    `members` (the members' breaks, `bandvoice.BREAK_VOICE`), each member's, on its own fonts in `sounds_dir`."""
     g = PART_GAIN_DB if gain_db is None else gain_db
-    return {part: Voice(ch, prog, pan, g.get(part, 0.0)) for part, (ch, prog, pan, _) in bandvoice.VOICE.items()}
+    out = {part: Voice(ch, prog, pan, g.get(part, 0.0)) for part, (ch, prog, pan, _) in bandvoice.VOICE.items()}
+    for m in members:
+        ch, prog, pan, _, fonts = bandvoice.BREAK_VOICE[m]
+        out[m] = Voice(ch, prog, pan, g.get(m, BREAK_GAIN_DB.get(m, 0.0)),
+                       tuple(str(Path(sounds_dir or ".") / f) for f in fonts))
+    return out
+
+
+def break_fonts(bandvoice, members) -> list[str]:
+    """The fonts the members' breaks need (`bandvoice.BREAK_VOICE`), each once."""
+    out = []
+    for m in members:
+        for f in bandvoice.BREAK_VOICE[m][4]:
+            if f not in out:
+                out.append(f)
+    return out
 
 
 @dataclass
@@ -120,4 +144,5 @@ class BandPlayer:
         delay = None if started is None else started + committed - now
         first = min(g[0] for g in group)
         self.log.append(CueLog(c, now, first - committed, delay, shift, first))
-        self.engine.play(group, self.late_s.get(c.part, 0.0), tag=(c.i, c.part))
+        late = self.late_s.get(c.part, BREAK_LATE_S if c.part in getattr(self.voicing, "BREAK_VOICE", {}) else 0.0)
+        self.engine.play(group, late, tag=(c.i, c.part))

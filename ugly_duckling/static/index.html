@@ -89,6 +89,7 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
       <div class="state" id="lstate">Starting</div>
       <div class="sub" id="ltune"></div>
       <div class="sub" id="lfind" hidden></div>
+      <div class="sub" id="lbreak" hidden></div>
       <div class="dots" id="dots"></div>
       <div class="chord" id="chord"></div>
       <div class="sub" id="cwhy"></div>
@@ -157,6 +158,11 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
     <div class="card">
       <h2>Who plays</h2>
       <div class="chips" id="parts"></div>
+      <div id="breaksec" hidden>
+        <div class="row" style="margin-top:14px"><span class="grow">Breaks in turn</span><button class="toggle" type="button" id="breaks" aria-pressed="false">Off</button></div>
+        <div class="chips" id="breakers" style="margin-top:10px"></div>
+        <div class="hint" id="breakhint"></div>
+      </div>
       <div class="row" style="margin-top:14px"><span class="grow">Band volume</span><span class="num" id="voln"></span></div>
       <input type="range" id="vol" step="1">
       <div class="hint">The loudest it goes is the level takes play at.</div>
@@ -169,9 +175,12 @@ select { width: 100%; min-height: 44px; border-radius: 14px; border: 1.5px solid
 const $ = (id) => document.getElementById(id);
 const KEY = "ud-settings";
 let opts = null, st = null, pollTimer = null;
-let pick = { tune: null, bpm: {}, follow: {}, pocket: null, input: null, instrument: null, count: "band", count_bars: "auto", parts: {bass: true, chop: true, comp: true}, volume_db: 0, listen_stop: true };
+let pick = { tune: null, bpm: {}, follow: {}, pocket: null, input: null, instrument: null, count: "band", count_bars: "auto", parts: {bass: true, chop: true, comp: true}, volume_db: 0, listen_stop: true, breaks: false, break_members: null };
 try { Object.assign(pick, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
 if (!pick.follow || typeof pick.follow !== "object") pick.follow = {};
+// the members' breaks: on or off, and who takes them (the service's members, in its order; all of them at first)
+function breakOpts() { return (opts && opts.breaks) || { available: false, members: [], tunes: [] }; }
+function breakMembers() { return Array.isArray(pick.break_members) ? pick.break_members : breakOpts().members.map(m => m.id); }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(pick)); } catch (e) {} }
 
 $("home").href = `http://${location.hostname}/`;
@@ -268,6 +277,17 @@ function renderSetup() {
   for (const x of opts.instruments) nb.append(chip(x.name, null, x.id === pick.instrument, () => { pick.instrument = x.id; save(); renderSetup(); }));
   const pb = $("parts"); pb.innerHTML = "";
   for (const p of opts.parts) pb.append(chip(p.name, null, pick.parts[p.id] !== false, () => { pick.parts[p.id] = pick.parts[p.id] === false; save(); renderSetup(); }));
+  const bo = breakOpts(), bon = !!pick.breaks && bo.available, who = breakMembers();
+  $("breaksec").hidden = !bo.members.length;
+  $("breaks").disabled = !bo.available;
+  $("breaks").setAttribute("aria-pressed", bon ? "true" : "false"); $("breaks").textContent = bon ? "On" : "Off";
+  const bb = $("breakers"); bb.innerHTML = ""; bb.hidden = !bon;
+  for (const m of bo.members) bb.append(chip(m.name, null, who.includes(m.id), () => {
+    pick.break_members = who.includes(m.id) ? who.filter(x => x !== m.id) : [...who, m.id]; save(); renderSetup(); }));
+  $("breakhint").textContent = !bo.available ? `Not available: ${bo.why}.`
+    : !bon ? "" : !t.any && !bo.tunes.includes(t.id) ? "This tune has no melody here: no breaks on it."
+    : !who.length ? "No one chosen: no breaks."
+    : "From the second time through, each time through the tune one of them takes a break on its melody, in this order, and leaves its rhythm part for it.";
   for (const id of ["vol", "lvol"]) { const v = $(id); v.min = opts.volume.min; v.max = opts.volume.max; }
   $("vol").value = pick.volume_db; $("voln").textContent = fmtDb(pick.volume_db);
 }
@@ -277,6 +297,7 @@ $("slower").onclick = () => { const t = tune(); pick.bpm[t.id] = Math.max(50, (p
 $("faster").onclick = () => { const t = tune(); pick.bpm[t.id] = Math.min(220, (pick.bpm[t.id] || t.bpm) + 2); save(); renderSetup(); };
 for (const b of $("counts").children) b.onclick = () => { pick.count = b.dataset.count; save(); renderSetup(); };
 $("liststop").onclick = () => { pick.listen_stop = !pick.listen_stop; save(); renderSetup(); };
+$("breaks").onclick = () => { pick.breaks = !pick.breaks; save(); renderSetup(); };
 $("vol").oninput = () => { pick.volume_db = +$("vol").value; $("voln").textContent = fmtDb(pick.volume_db); save(); };
 
 async function api(method, path, body) {
@@ -292,7 +313,8 @@ $("start").onclick = async () => {
   try {
     render(await api("POST", "/api/start", { tune: t.id, bpm: pick.bpm[t.id] || t.bpm, input: pick.input, instrument: pick.instrument,
       count: pick.count, count_bars: pick.count_bars || "auto", parts: pick.parts, volume_db: pick.volume_db, listen_stop: pick.listen_stop,
-      ...(fstep ? { follow: fstep.id } : {}), ...(pstep ? { pocket: pstep.id } : {}) }));
+      ...(fstep ? { follow: fstep.id } : {}), ...(pstep ? { pocket: pstep.id } : {}),
+      ...(breakOpts().available && pick.breaks ? { breaks: true, break_members: breakMembers() } : {}) }));
     show("");
   } catch (e) { show(e.message, true); }
   $("start").disabled = false; poll();
@@ -324,6 +346,10 @@ function render(s) {
   const f = s.find;
   $("lfind").hidden = !f;
   if (f) $("lfind").textContent = f.found ? `Found by ear: following its chart, in ${f.key}` : "Listening for which tune" + (f.named_title && f.sure >= 0.3 ? `: maybe ${f.named_title} (${Math.round(100 * f.sure)}%)` : "");
+  const br = s.breaks;
+  $("lbreak").hidden = !(br && br.on);
+  if (br && br.on) $("lbreak").textContent = br.now ? `${br.now}'s break` + (br.next ? ` · ${br.next} next` : "")
+    : br.next ? `${br.next}'s break next` : "Breaks: once the band knows where you are in the tune";
   const bpb = s.count ? s.count.beats_per_bar : s.beats_per_bar, b = s.beat;
   const dots = $("dots");
   if (dots.children.length !== bpb) { dots.innerHTML = ""; for (let i = 1; i <= bpb; i++) { const d = document.createElement("span"); d.className = "dot" + (i === 1 ? " one" : ""); dots.append(d); } }

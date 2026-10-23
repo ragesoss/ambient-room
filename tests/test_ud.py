@@ -106,7 +106,7 @@ def run_engine(eng: BandEngine, blocks: int) -> np.ndarray:
     eng.pairs = max(v.channel for v in eng.voices.values()) + 1
     from ambient.fluid import Synth
     for part, v in eng.voices.items():
-        eng.synths[part] = Synth(eng.fonts, eng.rate)
+        eng.synths[part] = Synth([Path(f) for f in v.fonts] or eng.fonts, eng.rate)
         eng.synths[part].program(v.channel, v.program)
     m = eng.mix_matrix()
     buf = np.zeros((2 * eng.pairs, eng.block), dtype=np.float32)
