@@ -1089,3 +1089,19 @@ band", have the measures. Needs that project's branch of the same work (its `tra
 - [Csound on a Pi with ALSA, clap-detection project](https://github.com/iver56/clap-detection):
   larger buffers fixed crackling.
 - [Supriya, a Python API for SuperCollider](https://github.com/supriya-project/supriya)
+
+## Licence
+
+The code is free software under the GNU General Public License, version 3
+or (at your option) any later version (`LICENSE`). Copyright 2026 the
+project's authors, as the git history shows. The player, 2026-10-23, in
+dobro-transcription: "let's proceed with the GPL as the plan. (same with
+ambient-room and piano-recorder.)" The band imports dobro-transcription's
+pipeline, which is under the same licence.
+
+Not under it:
+
+- The fonts in `ugly_duckling/static/fonts/`: SIL Open Font License 1.1,
+  its text beside each.
+- The patches in `upstream/`: made for Csound, and meant for it under
+  Csound's own licence (LGPL 2.1 or later).
