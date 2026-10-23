@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build the sampled voices' SoundFonts into sounds/.
 
-  tools/soundfonts [FLUID_SF2] [DOBRO_SF2]
+  tools/soundfonts [FLUID_SF2] [DOBRO_SF2] [GENERALUSER_SF2]
+  tools/soundfonts --band [GENERALUSER_SF2]     only the band's own fonts (mandolin.sf2)
 
 - sounds/acoustic.sf2: only the presets the voices use, copied out of
   FluidR3_GM (MIT licence; Debian's fluid-soundfont-gm), so the Pi loads a
@@ -16,6 +17,11 @@
 - sounds/upright.sf2 is built by tools/samples.py (the player's own
   upright bass, from the transcription project's takes); here it is only
   normalised.
+- sounds/mandolin.sf2 (2026-10-22): GeneralUser GS's mandolin (its bank 16,
+  program 25), moved to bank 0, program 25, for the band's mandolin taking
+  a break (the Ugly Duckling String Band, on a synth of its own: the
+  transcription project's `bandvoice.BREAK_VOICE`). The ambient synth does
+  not load it, and it is not normalised (FluidSynth alone plays it).
 
 Both are then normalised (normalise()) so the Pi's Csound reads them right:
 Debian's Csound 6.18.1 keeps a zone's root key and tuning in plain chars,
@@ -40,10 +46,16 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 from ambient.samples import FONTS, SAMPLES  # noqa: E402
 
-FLUID = Path(sys.argv[1] if len(sys.argv) > 1 else "/usr/share/sounds/sf2/FluidR3_GM.sf2")
-DOBRO = Path(sys.argv[2] if len(sys.argv) > 2 else
+BAND_ONLY = "--band" in sys.argv[1:]
+ARGS = [a for a in sys.argv[1:] if a != "--band"]
+if BAND_ONLY:
+    ARGS = [None, None] + ARGS
+FLUID = Path(ARGS[0] if len(ARGS) > 0 and ARGS[0] else "/usr/share/sounds/sf2/FluidR3_GM.sf2")
+DOBRO = Path(ARGS[1] if len(ARGS) > 1 and ARGS[1] else
              Path.home() / "play/dobro-transcription/dobro-soundfont/build/BeardDobroPrototype.sf2")
-GENERALUSER = Path(sys.argv[3] if len(sys.argv) > 3 else Path.home() / ".local/share/sounds/sf2/GeneralUser-GS.sf2")
+GENERALUSER = Path(ARGS[2] if len(ARGS) > 2 else Path.home() / ".local/share/sounds/sf2/GeneralUser-GS.sf2")
+# the band's own fonts (not the ambient synth's): file -> ((bank, program) in GeneralUser GS, (bank, program) there)
+BAND_FONTS = {"mandolin.sf2": ((16, 25), (0, 25))}
 # GeneralUser's banjo adds a looped saw for its attack, which plays on under the note without the font's envelopes
 LEAVE_OUT = {b"Percussive Saw Wave"}
 OUT = HERE / "sounds"
@@ -152,11 +164,13 @@ def pdta(p: dict) -> bytes:
     return lst("pdta", b"".join(chunk(k, b"".join(struct.pack(REC[k], *r) for r in p[k])) for k in REC))
 
 
-def write(path: Path, smpl: bytes, p: dict, name: str) -> None:
+def write(path: Path, smpl: bytes, p: dict, name: str,
+          comment: bytes = b"Presets copied out of FluidR3_GM (Frank Wen; MIT licence) for ambient-room.") -> None:
     """The FluidR3 subset, as a SoundFont."""
+    def zstr(b: bytes) -> bytes:  # an INFO string: zero-terminated, padded to an even length (FluidSynth 2.6 rejects
+        return b + (b"\0" if len(b) % 2 else b"\0\0")  # an odd one; the fonts built before were even by chance)
     info = lst("INFO", chunk("ifil", struct.pack("<HH", 2, 1)) + chunk("isng", b"EMU8000\0") +
-               chunk("INAM", name.encode() + b"\0") +
-               chunk("ICMT", b"Presets copied out of FluidR3_GM (Frank Wen; MIT licence) for ambient-room.\0"))
+               chunk("INAM", zstr(name.encode())) + chunk("ICMT", zstr(comment)))
     body = b"sfbk" + info + lst("sdta", chunk("smpl", smpl)) + pdta(p)
     path.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
 
@@ -217,8 +231,27 @@ def normalise(path: Path) -> dict:
     return stats
 
 
+def band_fonts() -> None:
+    """The band's own fonts (`BAND_FONTS`), out of GeneralUser GS, each preset moved to its bank and program here."""
+    if not GENERALUSER.exists():
+        print(f"{GENERALUSER}: missing (the band's mandolin needs it)")
+        return
+    smpl, pdta = read(GENERALUSER)
+    for name, (src, (bank, program)) in BAND_FONTS.items():
+        data, p = subset(smpl, pdta, [src], LEAVE_OUT)
+        p["phdr"] = [(h[0], program, bank, *h[3:]) if h[0] != b"EOP" else h for h in p["phdr"]]
+        write(OUT / name, data, p, "ambient-room's band: GeneralUser GS",
+              b"A preset copied out of GeneralUser GS v2.0.3 (S. Christian Collins) for ambient-room's band.")
+        # not normalised: only FluidSynth plays it (the band), never Csound (its preset's tuning is negative too, which
+        # normalise() could not take into a root key)
+        print(f"{OUT / name}: {len(p['shdr']) - 1} samples, {(OUT / name).stat().st_size / 1e6:.1f} MB")
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
+    if BAND_ONLY:
+        band_fonts()
+        return
     wanted = sorted({(s.bank, s.program) for s in SAMPLES.values() if s.font == "acoustic"})
     smpl, pdta = read(FLUID)
     data, p = subset(smpl, pdta, wanted)
@@ -239,6 +272,7 @@ def main() -> None:
             print(f"{OUT / font}: missing (its voices play their synthesized models)")
             continue
         print(f"{OUT / font}: normalised for the Pi's Csound: {normalise(OUT / font)}")
+    band_fonts()
 
 
 if __name__ == "__main__":

@@ -21,9 +21,9 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from .config import Config, load_config, steady_entry
-from .session import (FOLLOW_DEFAULT, FOLLOW_STEPS, PARTS, PART_NAMES, POCKET_STEPS, Busy, Session, Settings,
-                      count_in_plan, selfcheck)
-from .tunes import Tune, load_tunes
+from .session import (FOLLOW_DEFAULT, FOLLOW_STEPS, MEMBER_NAMES, MEMBERS, PARTS, PART_NAMES, POCKET_STEPS, Busy,
+                      Session, Settings, count_in_plan, selfcheck)
+from .tunes import Tune, load_tunes, melody_for
 
 STATIC = Path(__file__).parent / "static"
 INSTRUMENTS = {"guitar": "Guitar", "dobro": "Dobro", "bass": "Bass"}
@@ -43,6 +43,7 @@ class Band:
         from transcribe import bandvoice
         self.voicing = bandvoice
         self.tunes, self.problems = load_tunes(Path(cfg.tunes_root), cfg.tunes, src)
+        self.melodies = self._melodies()  # the tunes the members can take breaks on (`tunes.melody_for`)
         self.inputs = {i.id: i for i in cfg.inputs}
         self.lock = threading.RLock()
         self.session: Session | None = None
@@ -51,6 +52,29 @@ class Band:
         self._model = None
         self.checking = False
         self.echo_states: dict[str, dict] = {}  # each input's learnt room, from its last session (and from disk)
+
+    def _melodies(self) -> list[str]:
+        """The tunes with a melody for the members' breaks (`tunes.melody_for`), by id."""
+        out = []
+        for t in self.tunes.values():
+            try:
+                if melody_for(t) is not None:
+                    out.append(t.id)
+            except Exception as e:  # noqa: BLE001 (a key that does not read: no breaks on it, said)
+                self.problems.append(f"{t.id}: its melody for the breaks: {e}")
+        return out
+
+    def breaks_why(self) -> str | None:
+        """Why the members' breaks are not offered here, or None."""
+        if not hasattr(self.voicing, "BREAK_VOICE"):
+            return "the transcription project here has no members' breaks (update it)"
+        if not self.melodies:
+            return "none of the tunes has a melody here"
+        from ambient.bandplayer import break_fonts
+        missing = [f for f in break_fonts(self.voicing, MEMBERS) if not (self.cfg.sounds_dir / f).is_file()]
+        if missing:
+            return f"the members' sounds are missing: {', '.join(missing)}"
+        return None
 
     def _voice_check(self) -> str | None:
         """Why counting in by voice is not offered here, or None."""
@@ -91,6 +115,9 @@ class Band:
                                      for s in POCKET_STEPS]},
                 "any": {"available": bool(self.tunes) and self._can_find(), "bpm": round(ANY_BPM),
                         "meters": [m for m in (4, 3) if any(self._fits(t, m) for t in self.tunes.values())]},
+                "breaks": {"available": self.breaks_why() is None, "why": self.breaks_why(),
+                           "members": [{"id": m, "name": MEMBER_NAMES[m]} for m in MEMBERS],
+                           "tunes": list(self.melodies)},
                 "device": c.device.kind}
 
     def _pocket_numbers(self, name: str) -> dict:
@@ -174,8 +201,9 @@ class Band:
             pocket = self._pocket(body.get("pocket"))
             steady = self._steady(body.get("steady", self.cfg.steady_bars))
             onset_lead = self._onset_lead(body.get("onset_lead", self.cfg.onset_lead))
+            breaks, members = self._breaks(body.get("breaks", False), body.get("break_members", list(MEMBERS)))
             s = Settings(tune.id, bpm, inp.id, instrument, parts, vol, count, listen_stop, bars, follow, pocket,
-                         steady, onset_lead)
+                         steady, onset_lead, breaks, members)
             words = self.model() if (count == "voice" or listen_stop) else None
             sess = Session(self.cfg, tune, inp, s, self.voicing, words, on_end=self._ended,
                            echo_state=self.echo_state(inp.id), catalog=catalog)
@@ -220,6 +248,17 @@ class Band:
             if not hasattr(livebeat, "ONSET_LEAD_S"):
                 raise ValueError("the transcription project here has no onset lead (update it)")
         return value
+
+    def _breaks(self, on, members) -> tuple[bool, list[str]]:
+        """The members' breaks from the start request: on (true or false) and who rotates (`MEMBERS`' ids, in any
+        order; played in the rotation's)."""
+        if not isinstance(on, bool):
+            raise ValueError("breaks: true or false")
+        if not isinstance(members, list) or any(m not in MEMBERS for m in members):
+            raise ValueError(f"break_members: some of {', '.join(MEMBERS)}")
+        if on and self.breaks_why():
+            raise ValueError(f"the members' breaks are not available: {self.breaks_why()}")
+        return on, [m for m in MEMBERS if m in members]
 
     def _pocket(self, value) -> str:
         """The pocket from the start request: a step's id (`POCKET_STEPS`); none given, the config's."""

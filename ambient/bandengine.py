@@ -70,6 +70,9 @@ class Voice:
     program: int
     pan: float  # -1 left .. 1 right
     gain_db: float  # on the part's FluidSynth output
+    # the fonts this part's synth loads, in order (none: the engine's): a member's break on a font of its own (the
+    # dobro's program 25 is the steel guitar's too; the transcription project's `bandvoice.BREAK_VOICE`)
+    fonts: tuple = ()
 
 
 class BandEngine:
@@ -185,7 +188,7 @@ class BandEngine:
             return
         self.pairs = max(v.channel for v in self.voices.values()) + 1
         for part, v in self.voices.items():  # a synth a part (ambient/fluid.py, Synth)
-            self.synths[part] = Synth(self.fonts, self.rate)
+            self.synths[part] = Synth([Path(f) for f in v.fonts] or self.fonts, self.rate)
             self.synths[part].program(v.channel, v.program)
         self.output.open()
         self.stop_flag.clear()

@@ -5,6 +5,9 @@ The config lists the tunes (`[[tunes]]`): which folder, and which bars make one 
 not that already: `bars` (bar numbers or labels, in order: second endings, a take's first passes) or `form` (part
 letters: "A", "A", "B", "B" plays each part's bars in turn). The chart the band gets is one chord per beat over that
 pass, `(root pitch class, "maj" | "min" | "7")`, as `transcribe.liveband.LiveBand` takes it.
+
+A tune's melody, for the members' breaks (`melody_for`, 2026-10-22): its answer key in the dobro's folder, for the
+tunes the ambient synth's Tune line plays, when one pass of it is one pass of the chart.
 """
 
 from __future__ import annotations
@@ -124,3 +127,26 @@ def load_tunes(root: Path, entries: list[dict], src: str | None = None) -> tuple
         except Exception as ex:  # noqa: BLE001 (a missing folder must not stop the others)
             problems.append(f"{e.get('id', '?')}: {ex}")
     return tunes, problems
+
+
+def melody_for(tune: Tune):
+    """The tune's melody for the members' breaks (the transcription project's `transcribe.bandbreaks`): one pass of
+    its answer key, `tunes/dobro/<name>/<name>.musicxml` beside its folder, for the tunes whose melody the ambient
+    synth's Tune line plays (`ambient.presets.TUNE_MELODIES`: its key, its bars and parts), when that pass is one pass
+    of the band's chart (four beats a bar, as long). None: no melody here (no breaks on this tune)."""
+    from ambient.music import KEYS
+    from ambient.presets import TUNE_MELODIES
+    name = Path(tune.folder).name
+    src = next((m for m in TUNE_MELODIES.values() if m["folder"] == name), None)
+    if src is None or not tune.chart:
+        return None
+    path = Path(tune.folder).parent.parent / "dobro" / name / f"{name}.musicxml"
+    if not path.is_file():
+        return None
+    try:
+        from transcribe.bandbreaks import fits
+        from transcribe.breaks import read_tune
+    except ImportError:  # a transcription project from before the breaks
+        return None
+    mel = read_tune(path, KEYS.index(src["key"]), src["bars"], tuple(src.get("parts", ())), tune.id)
+    return mel if fits(mel, tune.chart, tune.beats_per_bar) else None

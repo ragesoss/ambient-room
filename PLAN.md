@@ -993,6 +993,55 @@ some cases rather than ornament it". The transcription project's card `ambient-b
   passed, 1 skipped; under the venv the engine's, conductor's, server's and breaks' tests 69 -> 77. Not deployed: a
   sound change at any density but the default, for the player's ear first (review `2026-10-22-break-density`).
 
+### Members' breaks in the band (2026-10-22)
+
+The player: "let's take the ambient breaks work from today and build an option in UD for rotating through band member
+breaks. dobro, fiddle, guitar, mando, banjo, and if that instrument takes a break, they drop out of the rhythm part (if
+they were in it)". The transcription project's card `ud-member-breaks` (#212); its findings, "Members' breaks in the
+band", have the measures. Needs that project's branch of the same work (its `transcribe/breaks.py`, `idioms.py`,
+`bandbreaks.py`).
+
+- **The break moved there.** `ambient/breaks.py` is now the synth's side only: finding the transcription project and
+  importing its package (`$AMBIENT_TRANSCRIPTION`, then `~/play/dobro-transcription`, `~/dobro-transcription`), a
+  tune's key (`load_tune`, cached), the loop's chords a beat at a time, which tune the harmony plays, the idioms by the
+  synth's voice names, and the synth's `Break`: the style's, played into the conductor's grid (`plan_bar`, `at`), its
+  free bars the melodist's (held to the note density by the style's `thin_free`). The rules are the transcription
+  project's `transcribe.breaks` and `transcribe.idioms`, moved verbatim. The synth plays the same notes: four tunes,
+  five voices (Dobro, Fiddle, Mandolin, Banjo, Acoustic guitar), pulls 1 to 0, densities 0.5 to 1.5, ten seeds and
+  the local departure: 4,200 runs, 4,139,645 notes the conductor sent and 451,514 of the break as heard, every one and
+  every measure the same as on main (8871704). The synth now imports that package at start (it read the tunes' keys
+  through it before): `tools/deploy` copies its `pipeline/src` to the unit too, and stops if it has no breaks.
+- **UD's option** (the transcription project's `bandbreaks`): Breaks in turn on the page under Who plays (on or off,
+  and which of the five), off by default; at Start `breaks` and `break_members` (`Settings`); while it plays, a line
+  naming whose break it is and who is next (the status's `breaks`). Only on a tune with a melody (`tunes.melody_for`:
+  the dobro's answer key, for the tunes `presets.TUNE_MELODIES` lists, when one pass of it is one pass of the band's
+  chart); with no tune chosen, each catalog tune's. With it off the session is as before: the band made with no
+  `breaks`, the engine the three parts' synths.
+- **The members' voices.** A member's notes come as cues of their own (its name the part), voiced by the transcription
+  project's `bandvoice.BREAK_VOICE` on a synth of its own with its own fonts (`bandengine.Voice.fonts`: the dobro's
+  program 25 is the steel guitar's too): the dobro `dobro.sf2`, the fiddle `acoustic.sf2`, the guitar and the banjo
+  `generaluser.sf2`, the mandolin `mandolin.sf2`, new: GeneralUser GS's mandolin (its bank 16) moved to bank 0,
+  program 25, 0.3 MB, built by `tools/soundfonts --band` (not normalised: only FluidSynth plays it). `tools/soundfonts`
+  now pads a font's INFO strings to an even length (FluidSynth 2.6 refused the mandolin's odd one; the fonts built
+  before were even and are the same). Their levels on the engine (`bandplayer.BREAK_GAIN_DB`: each 2 dB over the bass
+  by loudness, measured on the offline render) and a beat's notes late by up to 30 ms (`BREAK_LATE_S`). Made only when
+  the breaks are on: five more synths.
+- **No device** (`tools/ud_run.py --breaks all`, Red Wing, 80 s, three runs each way): the dobro's break planned at
+  beat 48, begun on the top at 64 and ended on the next at 128, its notes on time on every beat, none late or dropped,
+  no underrun; the fiddle's pickup and top as the take ended. The cues' margins min 12.7-14.6 ms, median 31.4-32.0
+  (off 14.4-15.4, 32.3-33.9). The engine's CPU 42-57 ms a second off, 70-72 on (the five members' synths, about 19);
+  the session's own varies between runs (209-278 off, 260-270 on) more than the breaks add. The unit's estimate is in
+  the transcription project's findings.
+- **Deploy**, after the player's ear and with both merged: the transcription project's main first (its pipeline the
+  synth and UD import), then `tools/soundfonts --band` here (writes `sounds/mandolin.sf2`), then `tools/deploy-ud`
+  (copies the tree with the fonts, that project's `pipeline/src` and now the dobro tunes' keys), then `tools/deploy`
+  (the synth: its breaks import from that `pipeline/src`), each after checking the apps are idle.
+- `tests/test_ud_breaks.py` (new, 3): the four tunes have a melody, the others none; a member's break on its own
+  fonts (the dobro, not the steel guitar); offered and taken at Start, refused otherwise, off the engine as before.
+  The suite 127 -> 130 passed, 1 skipped (against the transcription project's branch: `AMBIENT_TRANSCRIPTION` and
+  `UD_TRANSCRIBE` pointed at it). The page in muted headless Chromium at 390 px: the control off by default, on with
+  the five, one taken out, Start's request carrying them; no error, no sideways scroll. Not deployed.
+
 ## Steps
 
 0. **Plan.** This file. Done 2026-10-11.
